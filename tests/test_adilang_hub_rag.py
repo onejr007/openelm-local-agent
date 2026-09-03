@@ -240,3 +240,19 @@ def test_recall_memory_tool(tmp_path: Path):
     assert "PayloadStore" in result.content
 
 
+def test_create_action_plan_tool(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    tools = SafeTools()
+    project = Project("dev_project", "Dev", "Goal", "Rules", tmp_path, allow_write=True, is_creator_console=True)
+    res = tools.execute(
+        project,
+        "create_action_plan",
+        {"goal": "Optimalisasi Context Window", "steps": ["1:analisa", "2:tuning", "3:rebuild"]}
+    )
+    assert res.ok is True
+    assert "Optimalisasi Context Window" in res.content
+    assert "plan" in res.content
+
+

@@ -87,6 +87,7 @@ class SafeTools:
             "self_tune": self._self_tune,
             "self_restart": self._self_restart,
             "recall_memory": self._recall_memory,
+            "create_action_plan": self._create_action_plan,
         }
         if name not in handlers:
             return ToolResult(False, f"Unknown tool: {name}")
@@ -343,9 +344,18 @@ class SafeTools:
             lines.append(f"{idx}. [{m.title}] (Sumber: {m.source}, Relevansi: {m.relevance:.2f}):\n{m.text}")
         return "\n\n".join(lines)
 
+    def _create_action_plan(self, project: Project, goal: str, steps: list[str]) -> str:
+        """Formulate a concrete, step-by-step DAG execution plan in ADILang IR format."""
+        from .planner import plan_activity
+        from .adilang_ir import encode_plan
+        plan_ir = encode_plan(goal, steps, compact=True)
+        if self.hub:
+            self.hub.record("action_plan_created", goal)
+        return f"[Rencana Aksi Diformulasikan]:\nGoal: {goal}\nLangkah:\n" + "\n".join(f"- {s}" for s in steps) + f"\n\nADILang IR:\n{plan_ir}"
+
 
 TOOL_INSTRUCTIONS = """Tools, only when needed: list_files, read_file, search_files,
 write_file, replace_text, fetch_url, analyze_image, rebuild_system, git_sync_repo,
-system_diagnostics, self_tune, self_restart, recall_memory. To request one, output only:
+system_diagnostics, self_tune, self_restart, recall_memory, create_action_plan. To request one, output only:
 <tool_call>{"name":"tool_name","arguments":{...}}</tool_call>
 Write/edit/sync/rebuild/tune/restart needs user confirmation. Never claim a tool succeeded before its result."""

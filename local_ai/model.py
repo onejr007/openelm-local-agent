@@ -51,6 +51,6 @@ class OpenELMRuntime:
                     temp=temperature,
                     verbose=False,
                 ).strip()
-        for marker in ("\nQuestion:", "\nInstruction:", "\nRetrieved evidence:", "\n###"):
+        for marker in ("<|endoftext|>", "<|user|>", "<|assistant|>", "\nQuestion:", "\nInstruction:", "\nRetrieved evidence:", "\n###"):
             output = output.split(marker, 1)[0]
         return output.strip()
