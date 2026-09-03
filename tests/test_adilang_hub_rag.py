@@ -108,7 +108,7 @@ def test_self_evolution_rebuild_tool(tmp_path: Path):
     from local_ai.tools import SafeTools
     from local_ai.projects import Project
 
-    project = Project("test_dev", "Test Dev", "Test Dev Goal", "Test Rules", tmp_path, allow_write=True)
+    project = Project("test_dev", "Test Dev", "Test Dev Goal", "Test Rules", tmp_path, allow_write=True, is_creator_console=True)
     tools = SafeTools()
     res = tools.execute(project, "rebuild_system", {}, confirmed=True)
     assert res.ok is True
@@ -119,7 +119,7 @@ def test_system_diagnostics_and_tuning(tmp_path: Path):
     from local_ai.tools import SafeTools
     from local_ai.projects import Project
 
-    project = Project("test_dev", "Test Dev", "Test Dev Goal", "Test Rules", tmp_path, allow_write=True)
+    project = Project("test_dev", "Test Dev", "Test Dev Goal", "Test Rules", tmp_path, allow_write=True, is_creator_console=True)
     tools = SafeTools()
     diag = tools.execute(project, "system_diagnostics", {})
     assert diag.ok is True
@@ -130,6 +130,24 @@ def test_system_diagnostics_and_tuning(tmp_path: Path):
     assert tune_res.ok is True
     assert "diubah dari" in tune_res.content
     assert tools.settings.rag_top_k == 6
+
+
+def test_non_creator_guest_blocked_from_system_tools(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    guest_project = Project("guest_bot", "Guest", "Goal", "Rules", tmp_path, allow_write=False, is_creator_console=False)
+    tools = SafeTools()
+
+    # Attempt rebuild
+    res = tools.execute(guest_project, "rebuild_system", {})
+    assert res.ok is False
+    assert "Akses Ditolak" in res.content
+
+    # Attempt tuning
+    res_tune = tools.execute(guest_project, "self_tune", {"parameter": "rag_top_k", "value": 10})
+    assert res_tune.ok is False
+    assert "Akses Ditolak" in res_tune.content
 
 
 def test_chat_history_and_smart_context(tmp_path: Path):

@@ -18,6 +18,7 @@ class Project:
     workspace: Path
     allow_write: bool = False
     allowed_domains: tuple[str, ...] = ()
+    is_creator_console: bool = False
 
     def public(self) -> dict[str, Any]:
         return {
@@ -27,6 +28,7 @@ class Project:
             "workspace": str(self.workspace),
             "allow_write": self.allow_write,
             "allowed_domains": list(self.allowed_domains),
+            "is_creator_console": self.is_creator_console,
         }
 
 
@@ -78,6 +80,7 @@ class ProjectRegistry:
         if not workspace.is_relative_to(root):
             raise ValueError(f"Project workspace escapes application root: {project_id}")
         workspace.mkdir(parents=True, exist_ok=True)
+        is_creator = bool(raw.get("is_creator_console", False) or project_id == "developer_master")
         return Project(
             id=project_id,
             name=raw["name"],
@@ -86,4 +89,5 @@ class ProjectRegistry:
             workspace=workspace,
             allow_write=bool(raw.get("allow_write", False)),
             allowed_domains=tuple(raw.get("allowed_domains", [])),
+            is_creator_console=is_creator,
         )

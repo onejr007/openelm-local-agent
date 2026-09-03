@@ -55,6 +55,18 @@ class SafeTools:
     def execute(
         self, project: Project, name: str, arguments: dict[str, Any], *, confirmed: bool = False
     ) -> ToolResult:
+        creator_only_tools = {
+            "rebuild_system", "git_sync_repo", "system_diagnostics", "self_tune", "self_restart"
+        }
+        if name in creator_only_tools and not project.is_creator_console:
+            return ToolResult(
+                ok=False,
+                content=(
+                    f"Akses Ditolak: Tool '{name}' memiliki hak istimewa sistem tinggi dan HANYA dapat "
+                    "dijalankan oleh Bagas Adi Pratama melalui Developer Master Console terverifikasi."
+                ),
+            )
+
         if name in MUTATING_TOOLS and not (project.allow_write and confirmed):
             return ToolResult(
                 ok=False,
