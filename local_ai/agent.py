@@ -139,6 +139,12 @@ class LocalAgent:
                 ir_reply=ir_reply,
                 sources=[item.__dict__ for item in evidence],
             )
+            import threading
+            threading.Thread(
+                target=self.history_store.consolidate_unprocessed,
+                args=(project_id, self.rag),
+                daemon=True,
+            ).start()
 
         return AgentReply(
             answer=response,
@@ -179,6 +185,7 @@ Label suggestions as suggestions. For actions, give a short plan and verify the 
             "baca ", "lihat file", "tulis ", "edit ", "ubah ", "cari file", "http",
             "gambar", "image", "sync", "rebuild", "github", "diagnosa", "analisis",
             "sistem", "kekurangan", "kelebihan", "tune", "restart", "evaluasi", "status",
+            "ingat", "memori", "kemarin", "lalu", "sebelumnya", "dulu", "riwayat",
         )
         tool_text = TOOL_INSTRUCTIONS if any(word in message.lower() for word in action_words) else ""
         history_section = f"\nConversation:\n{history_text}\n" if history_text else ""

@@ -23,7 +23,7 @@ vision = VisionRuntime(base_url=settings.vision_base_url, model=settings.vision_
 registry = ProjectRegistry(settings)
 rag = RAGStore(settings)
 runtime = OpenELMRuntime(settings)
-tools = SafeTools(settings=settings, vision=vision, hub=hub)
+tools = SafeTools(settings=settings, vision=vision, hub=hub, rag=rag)
 agent = LocalAgent(settings, registry, rag, runtime, tools, hub=hub, history_store=history_store)
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -241,10 +241,39 @@ def chat(request: ChatRequest) -> dict:
 
 
 @app.get("/chat/history")
-def get_chat_history(project_id: str = "developer_master", limit: int = 100) -> list[dict]:
+def get_chat_history(
+    project_id: str = "developer_master",
+    limit: int = 40,
+    before_ts: float | None = None,
+) -> list[dict]:
     try:
         registry.get(project_id)
-        return history_store.list(project_id, limit=limit)
+        return history_store.list(project_id, limit=limit, before_ts=before_ts)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/chat/search")
+def search_chat_history(
+    project_id: str = "developer_master",
+    query: str = "",
+    limit: int = 20,
+) -> list[dict]:
+    try:
+        registry.get(project_id)
+        if not query.strip():
+            return []
+        return history_store.search(project_id, query=query.strip(), limit=limit)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/chat/consolidate")
+def consolidate_chat_memory(project_id: str = "developer_master") -> dict:
+    try:
+        registry.get(project_id)
+        created = history_store.consolidate_unprocessed(project_id, rag)
+        return {"episodes_created": created, "total_messages": history_store.count(project_id)}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -3,20 +3,27 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ADI Local AI</title>
+  <title>Developer Master Console — ADI Local AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    body {
-      background-color: #0f1117;
-      color: #e6edf3;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#38bdf8', 600: '#0284c7' }
+          }
+        }
+      }
     }
-    .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+  </script>
+  <style>
+    body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .custom-scroll::-webkit-scrollbar { width: 5px; }
     .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-    .custom-scroll::-webkit-scrollbar-thumb { background: #2d333b; border-radius: 4px; }
-    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #444c56; }
-    pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #8b949e; }
   </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none">
@@ -34,7 +41,7 @@
   </div>
 
   <!-- Header: Minimalist & Clean -->
-  <header class="h-13 border-b border-[#21262d] bg-[#161b22] flex items-center justify-between px-5 py-2.5 z-10">
+  <header class="h-14 border-b border-[#21262d] bg-[#161b22] flex items-center justify-between px-5 py-2.5 z-20">
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-semibold text-xs text-cyan-400">
         AI
@@ -48,37 +55,57 @@
             <span id="statusText">Online</span>
           </div>
         </div>
-        <p class="text-[11px] text-slate-400">Bagas Adi Pratama &bull; OpenELM Local</p>
+        <p class="text-[11px] text-slate-400">Bagas Adi Pratama &bull; Lifelong Developer Console</p>
       </div>
     </div>
 
     <!-- Header Actions -->
     <div class="flex items-center gap-2">
+      <!-- Search History Toggle -->
+      <button onclick="toggleSearch()" id="searchToggleBtn" title="Cari di Riwayat Chat" class="p-1.5 px-2.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-magnifying-glass text-[11px]"></i>
+        <span class="hidden sm:inline text-xs">Cari Riwayat</span>
+      </button>
+
+      <!-- Memory Stats Modal Toggle -->
+      <button onclick="openMemoryModal()" title="Status Memori Jangka Panjang" class="p-1.5 px-2.5 text-xs text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-brain text-[11px] text-cyan-400"></i>
+        <span class="hidden sm:inline text-xs">Memori</span>
+      </button>
+
+      <!-- Restart Engine -->
       <button onclick="restartAiServer()" title="Restart AI Engine" class="p-1.5 px-2.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition flex items-center gap-1.5">
         <i class="fa-solid fa-rotate-right text-[11px]"></i>
         <span class="hidden sm:inline text-xs">Restart</span>
       </button>
-      <button onclick="clearChat()" title="Bersihkan Percakapan" class="p-1.5 px-2.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition flex items-center gap-1.5">
-        <i class="fa-solid fa-trash text-[11px]"></i>
-        <span class="hidden sm:inline text-xs">Bersihkan</span>
-      </button>
     </div>
   </header>
 
-  <!-- Chat Area -->
-  <main class="flex-1 overflow-y-auto custom-scroll p-4 md:p-6 space-y-6" id="chatBox">
-    <!-- Initial welcome message -->
-    <div class="flex gap-3 max-w-2xl mr-auto">
-      <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-cyan-400 flex-shrink-0 mt-0.5">
-        AI
-      </div>
-      <div class="text-sm text-slate-200 leading-relaxed bg-[#161b22] border border-[#21262d] p-3.5 rounded-2xl">
-        <p>Halo Mas Bagas. AI lokal aktif dan siap digunakan. Silakan ketik pesan atau ajukan pertanyaan seperti biasa.</p>
-      </div>
+  <!-- Expandable Search Bar -->
+  <div id="searchBar" class="hidden bg-[#161b22] border-b border-[#21262d] px-5 py-2 z-10">
+    <div class="max-w-3xl mx-auto flex items-center gap-2">
+      <i class="fa-solid fa-search text-slate-500 text-xs"></i>
+      <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ketik kata kunci untuk mencari percakapan masa lalu (misal: tools, rag, adilang)..." class="flex-1 bg-transparent border-none text-xs text-slate-200 focus:outline-none placeholder-slate-500">
+      <button onclick="toggleSearch()" class="text-slate-400 hover:text-slate-200 text-xs p-1">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <!-- Search Results Dropdown -->
+    <div id="searchResults" class="max-w-3xl mx-auto mt-2 max-h-48 overflow-y-auto custom-scroll divide-y divide-slate-800 text-xs hidden">
+    </div>
+  </div>
+
+  <!-- Chat Area with Infinite Scroll -->
+  <main class="flex-1 overflow-y-auto custom-scroll p-4 md:p-6 space-y-4" id="chatBox" onscroll="handleChatScroll()">
+    <!-- Top loading indicator for pagination -->
+    <div id="topLoadingIndicator" class="hidden text-center py-2">
+      <span class="text-xs text-slate-500 inline-flex items-center gap-1.5">
+        <i class="fa-solid fa-spinner fa-spin"></i> Memuat riwayat sebelumnya...
+      </span>
     </div>
   </main>
 
-  <!-- Bottom Input Bar: Simple & Familiar -->
+  <!-- Bottom Input Bar -->
   <footer class="border-t border-[#21262d] bg-[#161b22] p-3 md:p-4">
     <div class="max-w-3xl mx-auto space-y-2">
 
@@ -99,29 +126,97 @@
           <input type="file" id="imageInput" accept="image/*" onchange="handleImageSelected(event)" class="hidden">
         </label>
 
-        <!-- Main Auto-Expanding Textarea -->
-        <textarea id="messageInput" rows="1" placeholder="Kirim pesan ke AI lokal..."
-          class="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none px-2.5 py-1.5 resize-none max-h-36 custom-scroll select-text"
-          onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
+        <!-- Message Input Area -->
+        <textarea
+          id="messageInput"
+          rows="1"
+          placeholder="Tulis pesan atau instruksi untuk AI lokal Anda..."
+          onkeydown="handleKeyDown(event)"
+          oninput="autoResize(this)"
+          class="flex-1 bg-transparent border-none text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none px-2 py-1 max-h-36 custom-scroll leading-relaxed"
+        ></textarea>
 
         <!-- Send Button -->
-        <button type="submit" id="sendBtn" class="p-2 w-8 h-8 rounded-lg bg-slate-100 hover:bg-white text-slate-950 flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed">
-          <i class="fa-solid fa-arrow-up text-xs font-bold"></i>
+        <button
+          type="submit"
+          id="sendBtn"
+          class="p-2 w-8 h-8 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center transition disabled:opacity-30 flex-shrink-0"
+        >
+          <i class="fa-solid fa-arrow-up text-xs"></i>
         </button>
       </form>
-      <div class="text-center">
-        <span class="text-[11px] text-slate-500">Enter kirim, Shift + Enter baris baru</span>
+      <div class="flex items-center justify-between text-[11px] text-slate-500 px-1">
+        <span>Enter kirim, Shift + Enter baris baru</span>
+        <span id="sessionSummary">Percakapan Berkelanjutan Seumur Hidup &bull; Memory Consolidator Aktif</span>
       </div>
     </div>
   </footer>
 
+  <!-- Memory Stats Modal -->
+  <div id="memoryModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#161b22] border border-[#30363d] rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-brain text-cyan-400"></i>
+          <h3 class="text-sm font-semibold text-slate-100">Status Memori Seumur Hidup AI</h3>
+        </div>
+        <button onclick="closeMemoryModal()" class="text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-300">
+        <div class="p-3 bg-[#0d1117] rounded-xl border border-slate-800 space-y-1.5">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Total Obrolan Tersimpan:</span>
+            <span id="memTotalMsgs" class="font-mono text-cyan-300 font-semibold">0</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Episode Memori Terkonsolidasi:</span>
+            <span id="memTotalEpisodes" class="font-mono text-emerald-400 font-semibold">Aktif</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Format Memori:</span>
+            <span class="font-mono text-amber-300">ADILang IR v2.0 Memory Modules</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Kompresi Dokumen:</span>
+            <span class="font-mono text-cyan-300">zlib level 9 (PayloadStore Tier 1)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Model Embedding:</span>
+            <span class="font-mono text-purple-300">multilingual-e5-small (ChromaDB Tier 2)</span>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          Percakapan Anda tidak pernah di-reset. Setiap beberapa giliran, latar belakang sistem mengompresi fakta, keputusan arsitektur, dan kode yang dimodifikasi menjadi modul memori jangka panjang sehingga AI tetap ingat apa yang dilakukan beberapa minggu atau bulan sebelumnya tanpa membebani context window model.
+        </p>
+
+        <div class="pt-2 flex justify-end gap-2">
+          <button onclick="triggerConsolidation()" id="btnConsolidate" class="px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-compact-disc"></i>
+            <span>Konsolidasikan Memori Sekarang</span>
+          </button>
+          <button onclick="closeMemoryModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition">
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
-    const AI_API = '';
     const SUPERVISOR_API = 'http://127.0.0.1:8741';
     let isServerOnline = true;
     let chatHistory = [];
+    let oldestTimestamp = null;
+    let hasMoreOlderMessages = true;
+    let isLoadingOlder = false;
     let attachedImageBase64 = null;
     let attachedImageFileName = null;
+    let lastRenderedDate = null;
+    let searchDebounceTimer = null;
 
     function autoResize(textarea) {
       textarea.style.height = 'auto';
@@ -156,49 +251,7 @@
       document.getElementById('imagePreviewBox').classList.add('hidden');
     }
 
-    async function loadChatHistory() {
-      try {
-        const resp = await fetch('/chat/history?project_id=developer_master&limit=100');
-        if (resp.ok) {
-          const messages = await resp.json();
-          if (messages && messages.length > 0) {
-            const box = document.getElementById('chatBox');
-            box.innerHTML = '';
-            chatHistory = [];
-            for (const msg of messages) {
-              appendMessage(msg.role, msg.content, {
-                ir_reply: msg.ir_reply,
-                sources: msg.sources
-              });
-              chatHistory.push({ role: msg.role, content: msg.content });
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed loading chat history:', err);
-      }
-    }
-
-    async function clearChat() {
-      if (!confirm('Hapus seluruh riwayat percakapan developer?')) return;
-      try {
-        await fetch('/chat/history?project_id=developer_master', { method: 'DELETE' });
-      } catch (_) {}
-      chatHistory = [];
-      const box = document.getElementById('chatBox');
-      box.innerHTML = `
-        <div class="flex gap-3 max-w-2xl mr-auto">
-          <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-cyan-400 flex-shrink-0 mt-0.5">
-            AI
-          </div>
-          <div class="text-sm text-slate-200 leading-relaxed bg-[#161b22] border border-[#21262d] p-3.5 rounded-2xl">
-            <p>Riwayat percakapan telah dibersihkan. Ada yang bisa saya bantu sekarang, Mas Bagas?</p>
-          </div>
-        </div>
-      `;
-    }
-
-    // Health check polling (every 3 seconds)
+    // Health check polling
     async function checkHealth() {
       try {
         const resp = await fetch('/health', { method: 'GET', signal: AbortSignal.timeout(2000) });
@@ -207,7 +260,6 @@
           return;
         }
       } catch (err) {
-        // Fallback check via supervisor
         try {
           const supResp = await fetch(`${SUPERVISOR_API}/status`, { signal: AbortSignal.timeout(1500) });
           if (supResp.ok) {
@@ -240,20 +292,15 @@
       }
     }
 
-    // Manual start via supervisor
     async function startAiServer() {
       const btn = document.getElementById('bannerStartBtn');
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i> Memulai...';
       try {
-        const res = await fetch(`${SUPERVISOR_API}/start`, { method: 'POST' });
-        if (res.ok) {
-          setTimeout(checkHealth, 2000);
-        } else {
-          alert('Gagal mengirim sinyal start ke supervisor.');
-        }
+        await fetch(`${SUPERVISOR_API}/start`, { method: 'POST' });
+        setTimeout(checkHealth, 2500);
       } catch (err) {
-        alert('Supervisor daemon offline di port 8741. Buka Terminal dan jalankan: ./run.sh');
+        alert('Gagal menghubungi supervisor di port 8741.');
       } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-play text-[10px]"></i> Jalankan Manual';
@@ -261,27 +308,69 @@
     }
 
     async function restartAiServer() {
-      if (!confirm('Restart AI Engine lokal sekarang?')) return;
+      if (!confirm('Restart AI Engine? Proses inferensi yang sedang berjalan akan dihentikan.')) return;
       try {
         await fetch(`${SUPERVISOR_API}/restart`, { method: 'POST' });
         setOnlineState(false);
         setTimeout(checkHealth, 3000);
-      } catch (_) {
-        alert('Tidak dapat menghubungi supervisor. Memulai ulang manual melalui server...');
+      } catch (err) {
+        alert('Gagal menghubungi supervisor di port 8741.');
       }
     }
 
-    function appendMessage(role, content, meta = {}) {
+    function formatDateDivider(dateStr) {
+      const today = new Date().toDateString();
+      const targetDate = new Date(dateStr).toDateString();
+      if (targetDate === today) return 'Hari Ini';
+      const yesterday = new Date(Date.now() - 86400000).toDateString();
+      if (targetDate === yesterday) return 'Kemarin';
+      return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    function appendDateDividerIfNeeded(timestamp, prepend = false) {
+      const dateStr = new Date(timestamp * 1000).toISOString().split('T')[0];
+      if (!prepend && lastRenderedDate === dateStr) return;
+      
+      const divider = document.createElement('div');
+      divider.className = 'flex items-center justify-center my-3 date-divider';
+      divider.setAttribute('data-date', dateStr);
+      divider.innerHTML = `
+        <span class="px-3 py-1 bg-[#161b22] border border-slate-800 rounded-full text-[10px] text-slate-400 font-medium tracking-wide shadow-sm">
+          ${formatDateDivider(new Date(timestamp * 1000))}
+        </span>
+      `;
+
       const box = document.getElementById('chatBox');
+      if (prepend) {
+        box.insertBefore(divider, box.children[1] || null);
+      } else {
+        box.appendChild(divider);
+        lastRenderedDate = dateStr;
+      }
+    }
+
+    function renderMessageElement(role, content, meta = {}) {
       const isUser = role === 'user';
       const div = document.createElement('div');
-      div.className = 'flex gap-3 max-w-2xl select-text ' + (isUser ? 'ml-auto justify-end' : 'mr-auto');
+      div.id = 'msg-' + (meta.id || Math.random().toString(36).substring(7));
+      div.className = 'flex gap-3 max-w-2xl select-text message-row ' + (isUser ? 'ml-auto justify-end' : 'mr-auto');
+
+      // Check if episodic memory was recalled
+      let memoryBadge = '';
+      if (meta.sources && meta.sources.some(s => s.kind === 'memory' || (s.title && s.title.includes('history')))) {
+        memoryBadge = `
+          <div class="mb-2 inline-flex items-center gap-1.5 px-2 py-0.5 bg-cyan-950/60 border border-cyan-800/80 rounded-md text-[10px] text-cyan-300">
+            <i class="fa-solid fa-brain text-[9px]"></i>
+            <span>Mengingat memori dari diskusi lampau</span>
+          </div>
+        `;
+      }
 
       let sourceSnippet = '';
       if (meta.sources && meta.sources.length > 0) {
         sourceSnippet = `
           <div class="mt-2 text-[11px] text-slate-400">
-            <span class="text-slate-500">Sumber:</span> ${meta.sources.map(s => escapeHtml(s.title || 'Doc')).join(', ')}
+            <span class="text-slate-500">Sumber Bukti:</span> ${meta.sources.map(s => escapeHtml(s.title || 'Doc')).join(', ')}
           </div>
         `;
       }
@@ -298,10 +387,13 @@
         `;
       }
 
+      const timeStr = meta.timestamp ? new Date(meta.timestamp * 1000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+
       if (isUser) {
         div.innerHTML = `
           <div class="bg-[#21262d] text-slate-100 p-3.5 rounded-2xl text-sm leading-relaxed max-w-xl">
             <div class="whitespace-pre-wrap">${escapeHtml(content)}</div>
+            ${timeStr ? `<div class="text-[10px] text-slate-400 text-right mt-1">${timeStr}</div>` : ''}
           </div>
         `;
       } else {
@@ -310,15 +402,32 @@
             AI
           </div>
           <div class="bg-[#161b22] border border-[#21262d] text-slate-200 p-3.5 rounded-2xl text-sm leading-relaxed max-w-xl flex-1">
+            ${memoryBadge}
             <div class="whitespace-pre-wrap">${escapeHtml(content)}</div>
             ${sourceSnippet}
             ${irSnippet}
+            ${timeStr ? `<div class="text-[10px] text-slate-500 text-right mt-1">${timeStr}</div>` : ''}
           </div>
         `;
       }
+      return div;
+    }
 
+    function appendMessage(role, content, meta = {}) {
+      if (meta.timestamp) {
+        appendDateDividerIfNeeded(meta.timestamp, false);
+      }
+      const box = document.getElementById('chatBox');
+      const div = renderMessageElement(role, content, meta);
       box.appendChild(div);
       box.scrollTop = box.scrollHeight;
+    }
+
+    function prependMessage(role, content, meta = {}) {
+      const box = document.getElementById('chatBox');
+      const topIndicator = document.getElementById('topLoadingIndicator');
+      const div = renderMessageElement(role, content, meta);
+      box.insertBefore(div, topIndicator.nextSibling);
     }
 
     function escapeHtml(str) {
@@ -330,6 +439,180 @@
         .replace(/"/g, '&quot;');
     }
 
+    // Infinite scroll: load earlier messages when scrolling near top
+    async function handleChatScroll() {
+      const box = document.getElementById('chatBox');
+      if (box.scrollTop < 60 && !isLoadingOlder && hasMoreOlderMessages && oldestTimestamp) {
+        await loadEarlierMessages();
+      }
+    }
+
+    async function loadEarlierMessages() {
+      if (isLoadingOlder || !hasMoreOlderMessages || !oldestTimestamp) return;
+      isLoadingOlder = true;
+      const topIndicator = document.getElementById('topLoadingIndicator');
+      topIndicator.classList.remove('hidden');
+
+      const box = document.getElementById('chatBox');
+      const oldScrollHeight = box.scrollHeight;
+
+      try {
+        const resp = await fetch(`/chat/history?project_id=developer_master&limit=30&before_ts=${oldestTimestamp}`);
+        if (resp.ok) {
+          const messages = await resp.json();
+          if (messages && messages.length > 0) {
+            oldestTimestamp = messages[0].timestamp;
+            // Prepend in reverse to maintain chronological order
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const msg = messages[i];
+              prependMessage(msg.role, msg.content, {
+                id: msg.id,
+                timestamp: msg.timestamp,
+                ir_reply: msg.ir_reply,
+                sources: msg.sources
+              });
+            }
+            // Preserve scroll position
+            box.scrollTop = box.scrollHeight - oldScrollHeight;
+          } else {
+            hasMoreOlderMessages = false;
+          }
+        }
+      } catch (err) {
+        console.error('Error loading earlier messages:', err);
+      } finally {
+        isLoadingOlder = false;
+        topIndicator.classList.add('hidden');
+      }
+    }
+
+    // Initial chat history loading
+    async function loadChatHistory() {
+      try {
+        const resp = await fetch('/chat/history?project_id=developer_master&limit=40');
+        if (resp.ok) {
+          const messages = await resp.json();
+          if (messages && messages.length > 0) {
+            const box = document.getElementById('chatBox');
+            // Retain top indicator
+            const indicator = document.getElementById('topLoadingIndicator');
+            box.innerHTML = '';
+            box.appendChild(indicator);
+
+            oldestTimestamp = messages[0].timestamp;
+            lastRenderedDate = null;
+
+            for (const msg of messages) {
+              appendMessage(msg.role, msg.content, {
+                id: msg.id,
+                timestamp: msg.timestamp,
+                ir_reply: msg.ir_reply,
+                sources: msg.sources
+              });
+              chatHistory.push({ role: msg.role, content: msg.content });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed loading chat history:', err);
+      }
+    }
+
+    // Search past conversations
+    function toggleSearch() {
+      const bar = document.getElementById('searchBar');
+      bar.classList.toggle('hidden');
+      if (!bar.classList.contains('hidden')) {
+        document.getElementById('searchInput').focus();
+      }
+    }
+
+    function debounceSearch() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(performSearch, 300);
+    }
+
+    async function performSearch() {
+      const q = document.getElementById('searchInput').value.trim();
+      const resultsDiv = document.getElementById('searchResults');
+      if (!q) {
+        resultsDiv.classList.add('hidden');
+        resultsDiv.innerHTML = '';
+        return;
+      }
+
+      try {
+        const resp = await fetch(`/chat/search?project_id=developer_master&query=${encodeURIComponent(q)}`);
+        if (resp.ok) {
+          const items = await resp.json();
+          resultsDiv.classList.remove('hidden');
+          if (items.length === 0) {
+            resultsDiv.innerHTML = `<div class="p-2 text-slate-500 text-center">Tidak ada percakapan ditemukan untuk "${escapeHtml(q)}"</div>`;
+            return;
+          }
+          resultsDiv.innerHTML = items.map(item => {
+            const dateStr = new Date(item.timestamp * 1000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+            return `
+              <div onclick="jumpToMessage('${item.id}', ${item.timestamp})" class="p-2 hover:bg-slate-800 cursor-pointer flex items-center justify-between transition">
+                <span class="truncate max-w-md text-slate-200"><strong>${item.role === 'user' ? 'Developer' : 'AI'}:</strong> ${escapeHtml(item.content)}</span>
+                <span class="text-[10px] text-slate-500 ml-2 flex-shrink-0">${dateStr}</span>
+              </div>
+            `;
+          }).join('');
+        }
+      } catch (err) {
+        console.error('Search failed:', err);
+      }
+    }
+
+    async function jumpToMessage(msgId, timestamp) {
+      const el = document.getElementById('msg-' + msgId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-cyan-500');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-cyan-500'), 2000);
+      } else {
+        // Load messages around this timestamp if needed
+        alert('Pesan berada di riwayat lampau. Silakan scroll ke atas untuk memuat percakapan tanggal tersebut.');
+      }
+    }
+
+    // Memory Modal functions
+    async function openMemoryModal() {
+      document.getElementById('memoryModal').classList.remove('hidden');
+      try {
+        const resp = await fetch('/chat/history?project_id=developer_master&limit=1');
+        const countResp = await fetch('/chat/consolidate?project_id=developer_master', { method: 'POST' });
+        if (countResp.ok) {
+          const data = await countResp.json();
+          document.getElementById('memTotalMsgs').innerText = data.total_messages || '0';
+        }
+      } catch (_) {}
+    }
+
+    function closeMemoryModal() {
+      document.getElementById('memoryModal').classList.add('hidden');
+    }
+
+    async function triggerConsolidation() {
+      const btn = document.getElementById('btnConsolidate');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Mengompresi...';
+      try {
+        const resp = await fetch('/chat/consolidate?project_id=developer_master', { method: 'POST' });
+        if (resp.ok) {
+          const data = await resp.json();
+          alert(`Berhasil! ${data.episodes_created} episode percakapan lampau telah dipadatkan ke memori semantik.`);
+        }
+      } catch (err) {
+        alert('Gagal konsolidasi: ' + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-compact-disc"></i> Konsolidasikan Memori Sekarang';
+      }
+    }
+
+    // Send Message
     async function sendMessage(e) {
       if (e) e.preventDefault();
       const input = document.getElementById('messageInput');
@@ -338,21 +621,30 @@
 
       let fullText = text;
       if (attachedImageBase64) {
-        fullText = `[Gambar: ${attachedImageFileName}]
-` + fullText;
+        fullText = `[Gambar: ${attachedImageFileName}]\n` + fullText;
       }
 
-      appendMessage('user', fullText);
+      appendMessage('user', fullText, { timestamp: Date.now() / 1000 });
       input.value = '';
       input.style.height = 'auto';
       clearAttachedImage();
 
+      // Show typing indicator
+      const box = document.getElementById('chatBox');
       const loadingDiv = document.createElement('div');
-      loadingDiv.id = 'loadingMsg';
-      loadingDiv.className = 'flex gap-3 max-w-2xl mr-auto text-xs text-slate-400 items-center pl-10';
-      loadingDiv.innerHTML = '<i class="fa-solid fa-circle fa-beat text-[8px] text-slate-500 mr-1"></i> Sedang berpikir...';
-      document.getElementById('chatBox').appendChild(loadingDiv);
-      document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
+      loadingDiv.id = 'aiTypingIndicator';
+      loadingDiv.className = 'flex gap-3 max-w-2xl mr-auto';
+      loadingDiv.innerHTML = `
+        <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-cyan-400 flex-shrink-0 mt-0.5">
+          AI
+        </div>
+        <div class="bg-[#161b22] border border-[#21262d] p-3 rounded-2xl text-xs text-slate-400 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span>Berpikir & menelusuri memori...</span>
+        </div>
+      `;
+      box.appendChild(loadingDiv);
+      box.scrollTop = box.scrollHeight;
 
       try {
         const resp = await fetch('/chat', {
@@ -361,8 +653,8 @@
           body: JSON.stringify({
             project_id: 'developer_master',
             message: fullText,
-            history: chatHistory.slice(-6),
-            remember: false,
+            history: [],
+            remember: true,
             allow_mutations: true
           })
         });
@@ -372,11 +664,10 @@
         if (resp.ok) {
           const res = await resp.json();
           appendMessage('assistant', res.answer, {
+            timestamp: Date.now() / 1000,
             ir_reply: res.ir_reply,
             sources: res.sources
           });
-          chatHistory.push({ role: 'user', content: fullText });
-          chatHistory.push({ role: 'assistant', content: res.answer });
           setOnlineState(true);
         } else {
           const err = await resp.json();
@@ -389,6 +680,7 @@
       }
     }
 
+    // Background health polling
     window.addEventListener('DOMContentLoaded', () => {
       checkHealth();
       loadChatHistory();

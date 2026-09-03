@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ipaddress
 import json
 import re
@@ -6,7 +8,7 @@ import subprocess
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
@@ -15,6 +17,9 @@ from .config import Settings, get_settings
 from .hub import LocalHub
 from .projects import Project
 from .vision import VisionRuntime
+
+if TYPE_CHECKING:
+    from .rag import RAGStore
 
 MUTATING_TOOLS = {"write_file", "replace_text", "git_sync_repo", "rebuild_system", "self_tune", "self_restart"}
 
@@ -32,12 +37,14 @@ class SafeTools:
         settings: Settings | None = None,
         vision: VisionRuntime | None = None,
         hub: LocalHub | None = None,
+        rag: RAGStore | None = None,
     ):
         self.settings = settings or get_settings()
         self.vision = vision or VisionRuntime(
             base_url=self.settings.vision_base_url, model=self.settings.vision_model
         )
         self.hub = hub
+        self.rag = rag
 
     def _path(self, project: Project, relative: str) -> Path:
         path = (project.workspace / relative).resolve()
@@ -67,6 +74,7 @@ class SafeTools:
             "system_diagnostics": self._system_diagnostics,
             "self_tune": self._self_tune,
             "self_restart": self._self_restart,
+            "recall_memory": self._recall_memory,
         }
         if name not in handlers:
             return ToolResult(False, f"Unknown tool: {name}")
@@ -306,9 +314,26 @@ class SafeTools:
             return f"[Self-Restart Gagal]: {exc}. Pastikan supervisor aktif di port 8741."
         return "[Self-Restart]: Permintaan terkirim."
 
+    def _recall_memory(self, project: Project, query: str) -> str:
+        """Recall episodic long-term memories across days, weeks, and months."""
+        if not self.rag:
+            return "RAG store not connected to tools."
+        results = self.rag.search(query, project.id, top_k=4)
+        memories = [r for r in results if r.kind == "memory"]
+        if not memories:
+            # Fallback to general evidence if no specific memory chunks
+            memories = results[:3]
+        if not memories:
+            return f"Tidak ditemukan ingatan atau catatan terkait: '{query}'."
+
+        lines = [f"[Memori Terpanggil untuk '{query}'] (Ditemukan {len(memories)} rekaman):"]
+        for idx, m in enumerate(memories, 1):
+            lines.append(f"{idx}. [{m.title}] (Sumber: {m.source}, Relevansi: {m.relevance:.2f}):\n{m.text}")
+        return "\n\n".join(lines)
+
 
 TOOL_INSTRUCTIONS = """Tools, only when needed: list_files, read_file, search_files,
 write_file, replace_text, fetch_url, analyze_image, rebuild_system, git_sync_repo,
-system_diagnostics, self_tune, self_restart. To request one, output only:
+system_diagnostics, self_tune, self_restart, recall_memory. To request one, output only:
 <tool_call>{"name":"tool_name","arguments":{...}}</tool_call>
 Write/edit/sync/rebuild/tune/restart needs user confirmation. Never claim a tool succeeded before its result."""

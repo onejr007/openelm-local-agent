@@ -157,3 +157,68 @@ def test_chat_history_and_smart_context(tmp_path: Path):
     assert cleared == 20
     assert len(store.list("dev_project")) == 0
 
+
+def test_lifelong_memory_search_and_consolidation(tmp_path: Path):
+    from local_ai.history import ChatHistoryStore
+    from local_ai.config import Settings
+    from local_ai.rag import RAGStore
+
+    store = ChatHistoryStore(tmp_path / "state")
+    settings = Settings(
+        root_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        project_dir=tmp_path / "projects",
+        state_dir=tmp_path / "state",
+        chroma_dir=tmp_path / "data" / "chroma",
+        docs_dir=tmp_path / "docs",
+        workspaces_dir=tmp_path / "workspaces",
+    )
+    rag = RAGStore(settings)
+
+    # 1. Add dialogue with key architectural decision
+    store.add("dev_project", "user", "Kemarin kita putuskan untuk menggunakan ADILang Core v2.0.")
+    store.add("dev_project", "assistant", "Dipahami, ADILang Core v2.0 aktif dengan kompresi token 47%.")
+    store.add("dev_project", "user", "Jangan lupa setting rag_top_k diatur ke 6.")
+    store.add("dev_project", "assistant", "Baik Mas Bagas, parameter rag_top_k telah diset ke 6.")
+
+    # 2. Search test
+    search_res = store.search("dev_project", "ADILang Core")
+    assert len(search_res) == 2
+    assert "ADILang Core" in search_res[0]["content"]
+
+    # 3. Episodic memory consolidation
+    episodes = store.consolidate_unprocessed("dev_project", rag)
+    assert episodes == 1
+
+    # 4. Recall from RAG memory collection
+    memories = rag.search("ADILang Core v2.0 keputusan", "dev_project")
+    assert len(memories) > 0
+    assert any("ADILang Core" in m.text for m in memories)
+
+
+def test_recall_memory_tool(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+    from local_ai.config import Settings
+    from local_ai.rag import RAGStore
+
+    settings = Settings(
+        root_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        project_dir=tmp_path / "projects",
+        state_dir=tmp_path / "state",
+        chroma_dir=tmp_path / "data" / "chroma",
+        docs_dir=tmp_path / "docs",
+        workspaces_dir=tmp_path / "workspaces",
+    )
+    rag = RAGStore(settings)
+    rag.remember("Catatan 2 minggu lalu: Kita mengoptimalkan PayloadStore level 9.", "dev_project")
+
+    tools = SafeTools(settings=settings, rag=rag)
+    project = Project("dev_project", "Dev", "Goal", "Rules", tmp_path, allow_write=True)
+
+    result = tools.execute(project, "recall_memory", {"query": "PayloadStore level 9"})
+    assert result.ok is True
+    assert "PayloadStore" in result.content
+
+
