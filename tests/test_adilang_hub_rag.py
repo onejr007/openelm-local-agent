@@ -113,3 +113,22 @@ def test_self_evolution_rebuild_tool(tmp_path: Path):
     res = tools.execute(project, "rebuild_system", {}, confirmed=True)
     assert res.ok is True
     assert "Sistem Rebuild/Test: BERHASIL" in res.content
+
+
+def test_system_diagnostics_and_tuning(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    project = Project("test_dev", "Test Dev", "Test Dev Goal", "Test Rules", tmp_path, allow_write=True)
+    tools = SafeTools()
+    diag = tools.execute(project, "system_diagnostics", {})
+    assert diag.ok is True
+    assert "Bagas Adi Pratama" in diag.content
+    assert "weaknesses_and_bottlenecks" in diag.content
+
+    # Tuning test
+    tune_res = tools.execute(project, "self_tune", {"parameter": "rag_top_k", "value": 6}, confirmed=True)
+    assert tune_res.ok is True
+    assert "diubah dari" in tune_res.content
+    assert tools.settings.rag_top_k == 6
+

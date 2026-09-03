@@ -148,9 +148,9 @@ class RAGStore:
     def search(self, query: str, project_id: str, top_k: int | None = None) -> list[Evidence]:
         limit = top_k or self.settings.rag_top_k
         where: dict[str, Any] = {
-            "": [
-                {"project_id": {"": project_id}},
-                {"scope": {"": "shared"}},
+            "$or": [
+                {"project_id": {"$eq": project_id}},
+                {"scope": {"$eq": "shared"}},
             ]
         }
         evidence: list[Evidence] = []

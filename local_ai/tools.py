@@ -16,7 +16,7 @@ from .hub import LocalHub
 from .projects import Project
 from .vision import VisionRuntime
 
-MUTATING_TOOLS = {"write_file", "replace_text", "git_sync_repo", "rebuild_system"}
+MUTATING_TOOLS = {"write_file", "replace_text", "git_sync_repo", "rebuild_system", "self_tune", "self_restart"}
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,9 @@ class SafeTools:
             "analyze_image": self._analyze_image,
             "rebuild_system": self._rebuild_system,
             "git_sync_repo": self._git_sync_repo,
+            "system_diagnostics": self._system_diagnostics,
+            "self_tune": self._self_tune,
+            "self_restart": self._self_restart,
         }
         if name not in handlers:
             return ToolResult(False, f"Unknown tool: {name}")
@@ -233,8 +236,79 @@ class SafeTools:
 
         return f"[Git Push Berhasil] Repo: https://github.com/{username}/{repo_name} (Commit: {commit_message})"
 
+    def _system_diagnostics(self, project: Project) -> str:
+        """Analyze system architecture, parameters, strengths, and weaknesses."""
+        from .payload_store import PayloadStore
+        ps = PayloadStore(self.settings.state_dir)
+        p_stats = ps.stats()
+        
+        info = {
+            "developer": "Bagas Adi Pratama S.Kom. (Lead Architect)",
+            "model_id": self.settings.model_id,
+            "context_budget": {
+                "max_context_tokens": self.settings.max_context_tokens,
+                "max_new_tokens": self.settings.max_new_tokens,
+                "rag_top_k": self.settings.rag_top_k,
+                "min_relevance": self.settings.min_relevance,
+            },
+            "storage_tier": {
+                "tier1_payload_store": p_stats,
+                "tier2_chroma": "ADILang v1.18.0 compressed IR vectors",
+            },
+            "vision_status": self.vision.status().get("provider", "offline"),
+            "supervisor_endpoint": "http://127.0.0.1:8741",
+            "hub_journal_valid": self.hub.verify_journal() if self.hub else True,
+            "strengths": [
+                "100% offline & local privacy",
+                "ADILang IR v1.18.0 compactor slashes prompt tokens by ~47%",
+                "Two-tier compression prevents ChromaDB bloat completely",
+                "Auto-start on boot via macOS Login Items",
+                "Supervisor on port 8741 allows remote start/restart even when main AI is down",
+            ],
+            "weaknesses_and_bottlenecks": [
+                "OpenELM-1.1B context window limited to 2048 tokens",
+                "Requires structured prompt guidance for multi-step reasoning",
+                "Cold-start latency on external vision models",
+            ],
+        }
+        return json.dumps(info, indent=2, ensure_ascii=False)
+
+    def _self_tune(self, project: Project, parameter: str, value: Any) -> str:
+        """Tune runtime parameters like rag_top_k, min_relevance, max_new_tokens."""
+        allowed = {
+            "rag_top_k": (int, 1, 10),
+            "min_relevance": (float, 0.05, 0.90),
+            "max_new_tokens": (int, 64, 512),
+            "max_context_tokens": (int, 512, 4096),
+        }
+        if parameter not in allowed:
+            return f"Parameter {parameter} tidak diizinkan. Pilihan: {list(allowed.keys())}"
+        
+        type_cls, v_min, v_max = allowed[parameter]
+        try:
+            typed_val = type_cls(value)
+            if not (v_min <= typed_val <= v_max):
+                return f"Nilai {parameter} harus berada di antara {v_min} dan {v_max}"
+            old_val = getattr(self.settings, parameter)
+            setattr(self.settings, parameter, typed_val)
+            return f"[Self-Tuning Berhasil]: {parameter} diubah dari {old_val} menjadi {typed_val}"
+        except Exception as exc:
+            return f"[Self-Tuning Gagal]: {exc}"
+
+    def _self_restart(self, project: Project) -> str:
+        """Trigger graceful self-restart via local supervisor daemon."""
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8741/restart", data=b"{}", method="POST")
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                if resp.status == 200:
+                    return "[Self-Restart Berhasil]: Perintah restart dikirim ke supervisor di port 8741."
+        except Exception as exc:
+            return f"[Self-Restart Gagal]: {exc}. Pastikan supervisor aktif di port 8741."
+        return "[Self-Restart]: Permintaan terkirim."
+
 
 TOOL_INSTRUCTIONS = """Tools, only when needed: list_files, read_file, search_files,
-write_file, replace_text, fetch_url, analyze_image, rebuild_system, git_sync_repo. To request one, output only:
+write_file, replace_text, fetch_url, analyze_image, rebuild_system, git_sync_repo,
+system_diagnostics, self_tune, self_restart. To request one, output only:
 <tool_call>{"name":"tool_name","arguments":{...}}</tool_call>
-Write/edit/sync/rebuild needs user confirmation. Never claim a tool succeeded before its result."""
+Write/edit/sync/rebuild/tune/restart needs user confirmation. Never claim a tool succeeded before its result."""
