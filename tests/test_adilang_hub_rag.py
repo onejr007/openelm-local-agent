@@ -388,3 +388,46 @@ def test_agent_extract_file_operation():
     assert op4 is not None
     assert op4["name"] == "delete_file"
     assert op4["arguments"]["path"] == "test.txt"
+
+
+def test_dependency_and_plugin_tools(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    tools = SafeTools()
+    project = Project("dev_project", "Dev", "Goal", "Rules", tmp_path, allow_write=True, is_creator_console=True)
+
+    # 1. List dependencies
+    l_res = tools.execute(project, "list_dependencies", {}, confirmed=True)
+    assert l_res.ok is True
+    assert "Daftar Dependency Terinstal" in l_res.content
+
+    # 2. Install plugin
+    plugin_code = "def audit(): return 'healthy'\n"
+    p_res = tools.execute(project, "install_plugin", {"name": "sample_audit", "code": plugin_code}, confirmed=True)
+    assert p_res.ok is True
+    assert "Plugin Terpasang & Tervalidasi" in p_res.content
+    assert (tmp_path.parent / "plugins" / "sample_audit.py").exists() or (Path("plugins") / "sample_audit.py").exists()
+
+    # Clean up test plugin if created in workspace
+    if (Path("plugins") / "sample_audit.py").exists():
+        (Path("plugins") / "sample_audit.py").unlink()
+
+
+def test_agent_extract_dependency_operation():
+    from local_ai.agent import LocalAgent
+
+    op1 = LocalAgent._extract_dependency_operation("Coba install dependency duckdb")
+    assert op1 is not None
+    assert op1["name"] == "install_dependency"
+    assert op1["arguments"]["package"] == "duckdb"
+
+    op2 = LocalAgent._extract_dependency_operation("Lihat daftar dependency yang terinstall")
+    assert op2 is not None
+    assert op2["name"] == "list_dependencies"
+
+    op3 = LocalAgent._extract_dependency_operation("Pasang plugin auto_metrics dengan kode: def run(): return 100")
+    assert op3 is not None
+    assert op3["name"] == "install_plugin"
+    assert op3["arguments"]["name"] == "auto_metrics"
+    assert "return 100" in op3["arguments"]["code"]

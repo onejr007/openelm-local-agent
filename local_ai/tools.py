@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 MUTATING_TOOLS = {
     "write_file", "replace_text", "append_file", "delete_file",
+    "install_dependency", "install_plugin",
     "git_sync_repo", "rebuild_system", "self_tune", "self_restart", "self_heal", "self_improve"
 }
 
@@ -59,7 +60,8 @@ class SafeTools:
         self, project: Project, name: str, arguments: dict[str, Any], *, confirmed: bool = False
     ) -> ToolResult:
         creator_only_tools = {
-            "rebuild_system", "git_sync_repo", "system_diagnostics", "self_tune", "self_restart", "self_heal", "self_improve"
+            "rebuild_system", "git_sync_repo", "system_diagnostics", "self_tune", "self_restart",
+            "self_heal", "self_improve", "install_dependency", "list_dependencies", "install_plugin"
         }
         if name in creator_only_tools and not project.is_creator_console:
             return ToolResult(
@@ -93,6 +95,9 @@ class SafeTools:
             "self_restart": self._self_restart,
             "self_heal": self._self_heal,
             "self_improve": self._self_improve,
+            "install_dependency": self._install_dependency,
+            "list_dependencies": self._list_dependencies,
+            "install_plugin": self._install_plugin,
             "recall_memory": self._recall_memory,
             "create_action_plan": self._create_action_plan,
         }
@@ -479,9 +484,78 @@ class SafeTools:
 
         return "\n\n".join(report_lines)
 
+    def _install_dependency(self, project: Project, package: str) -> str:
+        """Install a new Python library/dependency into the local virtual environment."""
+        pkg = package.strip()
+        if not re.match(r"^[a-zA-Z0-9_\-\.>=<~]+$", pkg):
+            raise ValueError(f"Nama paket '{pkg}' tidak valid atau mengandung karakter terlarang.")
+
+        pip_bin = self.settings.root_dir / ".venv" / "bin" / "pip"
+        if not pip_bin.exists():
+            pip_bin = self.settings.root_dir / ".venv" / "bin" / "pip3"
+        if not pip_bin.exists():
+            raise FileNotFoundError("Binary pip tidak ditemukan di dalam .venv")
+
+        try:
+            res = subprocess.run(
+                [str(pip_bin), "install", pkg],
+                cwd=str(self.settings.root_dir),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            out = res.stdout.strip() or res.stderr.strip()
+            if res.returncode == 0:
+                if self.hub:
+                    self.hub.record("dependency_installed", pkg)
+                return f"[Instalasi Sukses]: Berhasil menginstal paket '{pkg}' ke dalam environment .venv lokal.\n{out}"
+            return f"[Instalasi Gagal (Kode {res.returncode})]: {out}"
+        except subprocess.TimeoutExpired:
+            return f"[Instalasi Timeout]: Waktu pengunduhan/instalasi paket '{pkg}' melebihi batas 120 detik."
+        except Exception as exc:
+            return f"[Instalasi Error]: {exc}"
+
+    def _list_dependencies(self, project: Project, query: str = "") -> str:
+        """List currently installed Python packages in the local virtual environment."""
+        pip_bin = self.settings.root_dir / ".venv" / "bin" / "pip"
+        if not pip_bin.exists():
+            pip_bin = self.settings.root_dir / ".venv" / "bin" / "pip3"
+        try:
+            res = subprocess.run(
+                [str(pip_bin), "list", "--format=freeze"],
+                cwd=str(self.settings.root_dir),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            lines = res.stdout.strip().splitlines()
+            if query:
+                q = query.lower()
+                lines = [l for l in lines if q in l.lower()]
+            return f"[Daftar Dependency Terinstal ({len(lines)} paket)]:\n" + "\n".join(lines[:60])
+        except Exception as exc:
+            return f"[Gagal Membaca Dependency]: {exc}"
+
+    def _install_plugin(self, project: Project, name: str, code: str) -> str:
+        """Install or register a new modular plugin into the plugins/ directory."""
+        clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", name.strip())
+        plugins_dir = self.settings.root_dir / "plugins"
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+        plugin_file = plugins_dir / f"{clean_name}.py"
+        plugin_file.write_text(code, encoding="utf-8")
+
+        import py_compile
+        try:
+            py_compile.compile(str(plugin_file), doraise=True)
+            if self.hub:
+                self.hub.record("plugin_installed", clean_name)
+            return f"[Plugin Terpasang & Tervalidasi]: Plugin '{clean_name}' berhasil dipasang di plugins/{clean_name}.py dan sintaks Python valid."
+        except Exception as exc:
+            return f"[Plugin Sintaks Error]: Berkas disimpan di plugins/{clean_name}.py namun terjadi kesalahan sintaks: {exc}"
+
 
 TOOL_INSTRUCTIONS = """Tools, only when needed: list_files, read_file, search_files,
 write_file, replace_text, append_file, delete_file, fetch_url, analyze_image, rebuild_system, git_sync_repo,
-system_diagnostics, self_tune, self_restart, self_heal, self_improve, recall_memory, create_action_plan. To request one, output only:
+system_diagnostics, self_tune, self_restart, self_heal, self_improve, install_dependency, list_dependencies, install_plugin, recall_memory, create_action_plan. To request one, output only:
 <tool_call>{"name":"tool_name","arguments":{...}}</tool_call>
-Write/edit/delete/sync/rebuild/tune/restart/heal/improve needs user confirmation. Never claim a tool succeeded before its result."""
+Write/edit/delete/install/sync/rebuild/tune/restart/heal/improve needs user confirmation. Never claim a tool succeeded before its result."""

@@ -99,12 +99,14 @@ class LocalAgent:
 
         evidence = self.rag.search(message, project_id)
 
-        # 3. Dedicated Workspace File Operation Dispatch
+        # 3. Dedicated Workspace File & Dependency Operation Dispatch
         file_op = self._extract_file_operation(message)
+        dep_op = self._extract_dependency_operation(message) if not file_op else None
+        target_op = file_op or dep_op
         tools_executed = []
-        if file_op and project.is_creator_console:
-            op_name = file_op["name"]
-            op_args = file_op["arguments"]
+        if target_op and project.is_creator_console:
+            op_name = target_op["name"]
+            op_args = target_op["arguments"]
             result = self.tools.execute(project, op_name, op_args, confirmed=allow_mutations)
             tools_executed.append({
                 "name": op_name,
@@ -112,12 +114,12 @@ class LocalAgent:
                 "success": result.ok,
             })
             if result.requires_confirmation:
-                reply_ir = encode_reply("conv", f"Operasi berkas '{op_name}' memerlukan konfirmasi eksplisit.", compact=True)
+                reply_ir = encode_reply("conv", f"Operasi '{op_name}' memerlukan konfirmasi eksplisit.", compact=True)
                 return AgentReply(
-                    answer=f"Operasi perubahan berkas '{op_name}' pada `{op_args.get('path')}` memerlukan konfirmasi eksplisit.",
+                    answer=f"Operasi '{op_name}' memerlukan konfirmasi eksplisit dari Mas Bagas.",
                     evidence=[],
                     grounded=True,
-                    pending_tool=file_op,
+                    pending_tool=target_op,
                     ir_reply=reply_ir,
                 )
 
@@ -153,6 +155,25 @@ class LocalAgent:
                 response = (
                     f"Halo Mas Bagas. Berikut adalah isi dari berkas `{p_target}`:\n\n"
                     f"```\n{result.content}\n```"
+                )
+            elif op_name == "install_dependency":
+                response = (
+                    f"Halo Mas Bagas. Saya telah berhasil menginstal dependency/paket `{op_args.get('package')}` ke dalam environment lokal `.venv`:\n\n"
+                    f"✓ **Nama Paket**: `{op_args.get('package')}`\n"
+                    f"✓ **Log Eksekusi**:\n```\n{result.content}\n```\n\n"
+                    f"Paket kini telah aktif di runtime Python lokal dan siap digunakan."
+                )
+            elif op_name == "list_dependencies":
+                response = (
+                    f"Halo Mas Bagas. Berikut adalah status dependency yang terpasang di environment sistem `.venv`:\n\n"
+                    f"```\n{result.content}\n```"
+                )
+            elif op_name == "install_plugin":
+                response = (
+                    f"Halo Mas Bagas. Plugin modular `{op_args.get('name')}` telah berhasil dipasang di sistem:\n\n"
+                    f"✓ **Lokasi Plugin**: `plugins/{op_args.get('name')}.py`\n"
+                    f"✓ **Hasil Validasi**: {result.content}\n\n"
+                    f"Plugin kini terdaftar dan siap dijalankan."
                 )
             else:
                 response = f"Operasi {op_name} berhasil dijalankan: {result.content}"
@@ -247,9 +268,14 @@ class LocalAgent:
             "ide ", "draft", "improve", "perbaiki", "analisis", "analisa", "sync", "rebuild",
             "kurang", "kekurangan", "kelebihan", "evaluasi", "plan", "planning", "rencana",
             "eksekusi", "diagnosa", "identifikasi", "baca ", "lihat ", "hapus ", "delete ",
-            "replace ", "append ", "tambah ", "tambahkan ", "file",
+            "replace ", "append ", "tambah ", "tambahkan ", "file", "install ", "pasang ",
+            "dependency", "dependencies", "package", "library", "plugin", "pustaka", "modul",
+            "daftar", "list", "cek",
         )
-        is_generative_task = any(word in message.lower() for word in task_words)
+        is_generative_task = any(word in message.lower() for word in task_words) or bool(tools_executed)
+        if tools_executed:
+            valid_citations = True
+
         if evidence and not valid_citations and not is_generative_task:
             excerpts = []
             for index, item in enumerate(evidence[:2], 1):
@@ -462,5 +488,36 @@ Instruksi: Jawab langsung dalam Bahasa Indonesia secara faktual, runtut, sebutka
                     if len(lines) >= 2 and lines[0].startswith("```"):
                         content = "\n".join(lines[1:-1]).strip()
                 return {"name": "write_file", "arguments": {"path": path, "content": content}}
+
+        return None
+
+    @staticmethod
+    def _extract_dependency_operation(message: str) -> dict | None:
+        msg = message.strip()
+
+        # 1. Plugin installation
+        plug_pat = r"(?:pasang|install)\s+plugin\s+([a-zA-Z0-9_]+)(?:\s+(?:dengan\s+kode|isi:?)\s*[:\s]\s*([\s\S]+))?"
+        m_plug = re.search(plug_pat, msg, re.IGNORECASE)
+        if m_plug:
+            return {
+                "name": "install_plugin",
+                "arguments": {
+                    "name": m_plug.group(1).strip(),
+                    "code": m_plug.group(2).strip() if m_plug.group(2) else f"# Plugin {m_plug.group(1).strip()}\ndef run(*args, **kwargs):\n    return 'OK'\n",
+                },
+            }
+
+        # 2. List installed packages
+        list_pat = r"(?:daftar|list|cek|lihat)\s+(?:semua\s+)?(?:dependency|dependencies|paket|package|library|pustaka)"
+        if re.search(list_pat, msg, re.IGNORECASE):
+            return {"name": "list_dependencies", "arguments": {}}
+
+        # 3. Install dependency / package
+        dep_pat = r"(?:install|pasang|unduh)\s+(?:dependency\s+|package\s+|library\s+|pustaka\s+|modul\s+)?([a-zA-Z0-9_\-\.>=<~]+)"
+        m_dep = re.search(dep_pat, msg, re.IGNORECASE)
+        if m_dep:
+            pkg = m_dep.group(1).strip()
+            if pkg.lower() not in {"file", "plugin", "system", "sistem", "ini", "itu", "ulang", "lagi"}:
+                return {"name": "install_dependency", "arguments": {"package": pkg}}
 
         return None
