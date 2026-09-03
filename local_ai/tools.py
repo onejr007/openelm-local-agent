@@ -21,7 +21,10 @@ from .vision import VisionRuntime
 if TYPE_CHECKING:
     from .rag import RAGStore
 
-MUTATING_TOOLS = {"write_file", "replace_text", "git_sync_repo", "rebuild_system", "self_tune", "self_restart", "self_heal", "self_improve"}
+MUTATING_TOOLS = {
+    "write_file", "replace_text", "append_file", "delete_file",
+    "git_sync_repo", "rebuild_system", "self_tune", "self_restart", "self_heal", "self_improve"
+}
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,8 @@ class SafeTools:
             "search_files": self._search_files,
             "write_file": self._write_file,
             "replace_text": self._replace_text,
+            "append_file": self._append_file,
+            "delete_file": self._delete_file,
             "fetch_url": self._fetch_url,
             "analyze_image": self._analyze_image,
             "rebuild_system": self._rebuild_system,
@@ -141,6 +146,22 @@ class SafeTools:
             raise ValueError(f"Expected exactly one match, found {count}")
         file_path.write_text(content.replace(old, new, 1), encoding="utf-8")
         return f"Updated {path}"
+
+    def _append_file(self, project: Project, path: str, content: str) -> str:
+        file_path = self._path(project, path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with file_path.open("a", encoding="utf-8") as f:
+            f.write(content)
+        return f"Appended {len(content)} characters to {path}"
+
+    def _delete_file(self, project: Project, path: str) -> str:
+        file_path = self._path(project, path)
+        if not file_path.exists():
+            return f"File {path} does not exist."
+        if file_path.is_file():
+            file_path.unlink()
+            return f"Deleted file {path}"
+        raise ValueError(f"Path {path} is not a regular file.")
 
     def _fetch_url(self, project: Project, url: str, max_chars: int = 12000) -> str:
         parsed = urlparse(url)
@@ -460,7 +481,7 @@ class SafeTools:
 
 
 TOOL_INSTRUCTIONS = """Tools, only when needed: list_files, read_file, search_files,
-write_file, replace_text, fetch_url, analyze_image, rebuild_system, git_sync_repo,
+write_file, replace_text, append_file, delete_file, fetch_url, analyze_image, rebuild_system, git_sync_repo,
 system_diagnostics, self_tune, self_restart, self_heal, self_improve, recall_memory, create_action_plan. To request one, output only:
 <tool_call>{"name":"tool_name","arguments":{...}}</tool_call>
-Write/edit/sync/rebuild/tune/restart/heal/improve needs user confirmation. Never claim a tool succeeded before its result."""
+Write/edit/delete/sync/rebuild/tune/restart/heal/improve needs user confirmation. Never claim a tool succeeded before its result."""

@@ -328,3 +328,63 @@ def test_self_improve_tool(tmp_path: Path):
     assert "Autonomous Self-Improvement Cycle" in res.content
     assert "Self-Tuning" in res.content
     assert "ADILang IR Plan" in res.content
+
+
+def test_file_manipulation_tools(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    tools = SafeTools()
+    project = Project("dev_project", "Dev", "Goal", "Rules", tmp_path, allow_write=True, is_creator_console=True)
+
+    # 1. Write file
+    w_res = tools.execute(project, "write_file", {"path": "sub/demo.txt", "content": "Line 1\n"}, confirmed=True)
+    assert w_res.ok is True
+    assert (tmp_path / "sub" / "demo.txt").read_text() == "Line 1\n"
+
+    # 2. Append file
+    a_res = tools.execute(project, "append_file", {"path": "sub/demo.txt", "content": "Line 2\n"}, confirmed=True)
+    assert a_res.ok is True
+    assert (tmp_path / "sub" / "demo.txt").read_text() == "Line 1\nLine 2\n"
+
+    # 3. Replace text
+    r_res = tools.execute(project, "replace_text", {"path": "sub/demo.txt", "old": "Line 2", "new": "Line Two"}, confirmed=True)
+    assert r_res.ok is True
+    assert "Line Two" in (tmp_path / "sub" / "demo.txt").read_text()
+
+    # 4. Read file
+    read_res = tools.execute(project, "read_file", {"path": "sub/demo.txt"}, confirmed=True)
+    assert read_res.ok is True
+    assert "Line Two" in read_res.content
+
+    # 5. Delete file
+    d_res = tools.execute(project, "delete_file", {"path": "sub/demo.txt"}, confirmed=True)
+    assert d_res.ok is True
+    assert not (tmp_path / "sub" / "demo.txt").exists()
+
+
+def test_agent_extract_file_operation():
+    from local_ai.agent import LocalAgent
+
+    op1 = LocalAgent._extract_file_operation("Coba buatkan file baru bernama test.txt di workspace dengan isi: Halo ADI")
+    assert op1 is not None
+    assert op1["name"] == "write_file"
+    assert op1["arguments"]["path"] == "test.txt"
+    assert op1["arguments"]["content"] == "Halo ADI"
+
+    op2 = LocalAgent._extract_file_operation("Edit file test.txt ganti 'Halo ADI' jadi 'Halo Mas Bagas'")
+    assert op2 is not None
+    assert op2["name"] == "replace_text"
+    assert op2["arguments"]["path"] == "test.txt"
+    assert op2["arguments"]["old"] == "Halo ADI"
+    assert op2["arguments"]["new"] == "Halo Mas Bagas"
+
+    op3 = LocalAgent._extract_file_operation("Baca file config.py")
+    assert op3 is not None
+    assert op3["name"] == "read_file"
+    assert op3["arguments"]["path"] == "config.py"
+
+    op4 = LocalAgent._extract_file_operation("Hapus file test.txt")
+    assert op4 is not None
+    assert op4["name"] == "delete_file"
+    assert op4["arguments"]["path"] == "test.txt"

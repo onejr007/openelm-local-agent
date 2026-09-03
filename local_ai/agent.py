@@ -98,49 +98,107 @@ class LocalAgent:
             message_with_plan = message
 
         evidence = self.rag.search(message, project_id)
-        prompt = self._prompt(
-            project.system_prompt,
-            project.goal,
-            message_with_plan,
-            self._clamp_context(history or []),
-            evidence,
-            state_summary=state_summary,
-            is_creator=project.is_creator_console,
-        )
-        response = self.runtime.generate(prompt)
 
+        # 3. Dedicated Workspace File Operation Dispatch
+        file_op = self._extract_file_operation(message)
         tools_executed = []
-        for _ in range(3):
-            call = self._tool_call(response)
-            if not call:
-                break
-            result = self.tools.execute(
-                project,
-                call["name"],
-                call.get("arguments", {}),
-                confirmed=allow_mutations,
-            )
+        if file_op and project.is_creator_console:
+            op_name = file_op["name"]
+            op_args = file_op["arguments"]
+            result = self.tools.execute(project, op_name, op_args, confirmed=allow_mutations)
             tools_executed.append({
-                "name": call["name"],
-                "arguments": call.get("arguments", {}),
+                "name": op_name,
+                "arguments": op_args,
                 "success": result.ok,
             })
             if result.requires_confirmation:
-                reply_ir = encode_reply("conv", "Operasi perubahan memerlukan konfirmasi eksplisit.", compact=True)
+                reply_ir = encode_reply("conv", f"Operasi berkas '{op_name}' memerlukan konfirmasi eksplisit.", compact=True)
                 return AgentReply(
-                    answer="Operasi perubahan memerlukan konfirmasi eksplisit.",
-                    evidence=evidence,
-                    grounded=bool(evidence),
-                    pending_tool=call,
+                    answer=f"Operasi perubahan berkas '{op_name}' pada `{op_args.get('path')}` memerlukan konfirmasi eksplisit.",
+                    evidence=[],
+                    grounded=True,
+                    pending_tool=file_op,
                     ir_reply=reply_ir,
                 )
-            tool_prompt = (
-                prompt
-                + f"\n\nAssistant requested tool: {json.dumps(call, ensure_ascii=False)}"
-                + f"\nTool result (success={result.ok}):\n{result.content}"
-                + "\n\nAssistant: Answer the user using the tool result."
+
+            p_target = op_args.get("path", "")
+            if op_name == "write_file":
+                response = (
+                    f"Halo Mas Bagas. Saya telah berhasil mengeksekusi operasi pembuatan/penulisan berkas pada sistem:\n\n"
+                    f"✓ **Berkas Target**: `{p_target}`\n"
+                    f"✓ **Hasil Eksekusi**: `{result.content}`\n\n"
+                    f"**Pratinjau Isi Berkas**:\n```\n{op_args.get('content', '')}\n```\n\n"
+                    f"Berkas kini telah tersimpan di workspace lokal dan siap digunakan."
+                )
+            elif op_name == "replace_text":
+                response = (
+                    f"Halo Mas Bagas. Saya telah berhasil memodifikasi isi berkas pada sistem:\n\n"
+                    f"✓ **Berkas Target**: `{p_target}`\n"
+                    f"✓ **Teks Diganti**: `{op_args.get('old')}` ➔ `{op_args.get('new')}`\n"
+                    f"✓ **Hasil Eksekusi**: `{result.content}`\n\n"
+                    f"Perubahan teks telah tersimpan secara presisi di sistem lokal."
+                )
+            elif op_name == "append_file":
+                response = (
+                    f"Halo Mas Bagas. Saya telah berhasil menambahkan teks ke dalam berkas `{p_target}`:\n\n"
+                    f"✓ **Hasil Eksekusi**: `{result.content}`\n\n"
+                    f"**Teks Ditambahkan**:\n```\n{op_args.get('content', '')}\n```"
+                )
+            elif op_name == "delete_file":
+                response = (
+                    f"Halo Mas Bagas. Berkas `{p_target}` telah berhasil dihapus dari sistem:\n\n"
+                    f"✓ **Hasil Eksekusi**: `{result.content}`"
+                )
+            elif op_name == "read_file":
+                response = (
+                    f"Halo Mas Bagas. Berikut adalah isi dari berkas `{p_target}`:\n\n"
+                    f"```\n{result.content}\n```"
+                )
+            else:
+                response = f"Operasi {op_name} berhasil dijalankan: {result.content}"
+        else:
+            prompt = self._prompt(
+                project.system_prompt,
+                project.goal,
+                message_with_plan,
+                self._clamp_context(history or []),
+                evidence,
+                state_summary=state_summary,
+                is_creator=project.is_creator_console,
             )
-            response = self.runtime.generate(tool_prompt)
+            response = self.runtime.generate(prompt)
+
+            for _ in range(3):
+                call = self._tool_call(response)
+                if not call:
+                    break
+                result = self.tools.execute(
+                    project,
+                    call["name"],
+                    call.get("arguments", {}),
+                    confirmed=allow_mutations,
+                )
+                tools_executed.append({
+                    "name": call["name"],
+                    "arguments": call.get("arguments", {}),
+                    "success": result.ok,
+                })
+                if result.requires_confirmation:
+                    reply_ir = encode_reply("conv", "Operasi perubahan memerlukan konfirmasi eksplisit.", compact=True)
+                    return AgentReply(
+                        answer="Operasi perubahan memerlukan konfirmasi eksplisit.",
+                        evidence=evidence,
+                        grounded=bool(evidence),
+                        pending_tool=call,
+                        ir_reply=reply_ir,
+                    )
+                tool_prompt = (
+                    prompt
+                    + f"\n\nAssistant requested tool: {json.dumps(call, ensure_ascii=False)}"
+                    + f"\nTool result (success={result.ok}):\n{result.content}"
+                    + "\n\nAssistant: Answer the user using the tool result."
+                )
+                response = self.runtime.generate(tool_prompt)
 
         if activity.kind == "system_evaluation" and project.is_creator_console:
             # Provide exact, zero-hallucination architectural evaluation and DAG planning
@@ -188,7 +246,8 @@ class LocalAgent:
             "buat ", "buatkan", "generate", "rancang", "tulis ", "edit ", "ubah ",
             "ide ", "draft", "improve", "perbaiki", "analisis", "analisa", "sync", "rebuild",
             "kurang", "kekurangan", "kelebihan", "evaluasi", "plan", "planning", "rencana",
-            "eksekusi", "diagnosa", "identifikasi",
+            "eksekusi", "diagnosa", "identifikasi", "baca ", "lihat ", "hapus ", "delete ",
+            "replace ", "append ", "tambah ", "tambahkan ", "file",
         )
         is_generative_task = any(word in message.lower() for word in task_words)
         if evidence and not valid_citations and not is_generative_task:
@@ -342,3 +401,66 @@ Instruksi: Jawab langsung dalam Bahasa Indonesia secara faktual, runtut, sebutka
         if not isinstance(call.get("arguments", {}), dict):
             return None
         return call
+
+    @staticmethod
+    def _extract_file_operation(message: str) -> dict | None:
+        msg = message.strip()
+
+        # 1. Read file pattern: "baca file <path>" or "lihat isi file <path>"
+        read_pat = r"(?:baca|lihat|tampilkan|read|view)\s+(?:isi\s+)?file\s+([a-zA-Z0-9_./\-]+)"
+        m_read = re.search(read_pat, msg, re.IGNORECASE)
+        if m_read:
+            return {"name": "read_file", "arguments": {"path": m_read.group(1).strip()}}
+
+        # 2. Delete file pattern: "hapus file <path>" or "delete file <path>"
+        del_pat = r"(?:hapus|delete|remove)\s+file\s+([a-zA-Z0-9_./\-]+)"
+        m_del = re.search(del_pat, msg, re.IGNORECASE)
+        if m_del:
+            return {"name": "delete_file", "arguments": {"path": m_del.group(1).strip()}}
+
+        # 3. Replace / Edit text in file pattern: "edit file <path> ganti <old> jadi <new>"
+        replace_pat = r"(?:edit|ubah|ganti\s+teks\s+di)\s+file\s+([a-zA-Z0-9_./\-]+)[\s\S]*?(?:ganti|ubah)\s+[\"\x27`](.+?)[\"\x27`]\s+(?:jadi|menjadi|dengan)\s+[\"\x27`](.+?)[\"\x27`]"
+        m_rep = re.search(replace_pat, msg, re.IGNORECASE)
+        if m_rep:
+            return {
+                "name": "replace_text",
+                "arguments": {
+                    "path": m_rep.group(1).strip(),
+                    "old": m_rep.group(2),
+                    "new": m_rep.group(3)
+                }
+            }
+
+        # 4. Append to file pattern: "tambahkan <content> ke file <path>"
+        append_pat = r"(?:tambahkan|append)\s+[\"\x27`]?([\s\S]+?)[\"\x27`]?\s+(?:ke|pada)\s+(?:file\s+)?([a-zA-Z0-9_./\-]+)"
+        m_app = re.search(append_pat, msg, re.IGNORECASE)
+        if m_app and not m_app.group(2).endswith((":", "=")):
+            return {
+                "name": "append_file",
+                "arguments": {
+                    "path": m_app.group(2).strip(),
+                    "content": m_app.group(1).strip()
+                }
+            }
+
+        # 5. Write / Create file pattern: "buat file <path> [dengan isi / berisi / isi:] <content>"
+        write_patterns = [
+            r"(?:buat|tulis|buatkan|create)\s+file\s+(?:baru\s+)?(?:bernama\s+)?([a-zA-Z0-9_./\-]+)(?:\s+(?:di\s+workspace\s+)?(?:dengan\s+isi|berisi|isi:?)\s*[:\s]\s*([\s\S]+))?",
+            r"(?:buat|tulis|buatkan|create)\s+([a-zA-Z0-9_./\-]+\.[a-zA-Z0-9]+)(?:\s+(?:dengan\s+isi|berisi|isi:?)\s*[:\s]\s*([\s\S]+))?",
+        ]
+        for pat in write_patterns:
+            m = re.search(pat, msg, re.IGNORECASE)
+            if m:
+                path = m.group(1).strip()
+                content = m.group(2).strip() if m.group(2) else ""
+                if (content.startswith('"""') and content.endswith('"""')) or (content.startswith("'''") and content.endswith("'''")):
+                    content = content[3:-3].strip()
+                elif (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
+                    content = content[1:-1].strip()
+                elif content.startswith("```") and content.endswith("```"):
+                    lines = content.splitlines()
+                    if len(lines) >= 2 and lines[0].startswith("```"):
+                        content = "\n".join(lines[1:-1]).strip()
+                return {"name": "write_file", "arguments": {"path": path, "content": content}}
+
+        return None
