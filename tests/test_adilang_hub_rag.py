@@ -269,3 +269,36 @@ def test_vision_runtime_caching():
     # Second call must hit SHA-256 in-memory cache
     second_desc = runtime.analyze_bytes(data, prompt="test")
     assert first_desc == second_desc
+
+
+def test_context_budget_clamp():
+    from local_ai.agent import LocalAgent
+    agent = LocalAgent.__new__(LocalAgent)
+    history = [
+        {"role": "user", "content": f"Message {i} " + ("x" * 200)}
+        for i in range(15)
+    ]
+    clamped = agent._clamp_context(history, max_total_chars=650)
+    total_chars = sum(len(m["content"]) for m in clamped)
+    assert total_chars <= 650
+    assert len(clamped) < len(history)
+
+
+def test_chat_stream_endpoint(tmp_path: Path):
+    from fastapi.testclient import TestClient
+    from local_ai.api import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/chat/stream",
+        json={
+            "project_id": "developer_master",
+            "message": "Status?",
+            "history": [],
+            "remember": False,
+        },
+    )
+    assert response.status_code == 200
+    assert "event: step" in response.text
+    assert "event: token" in response.text
+    assert "event: done" in response.text
