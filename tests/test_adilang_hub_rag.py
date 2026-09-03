@@ -315,3 +315,16 @@ def test_self_heal_tool(tmp_path: Path):
     assert "Self-Healing & System Integrity Report" in res.content
     assert "SQLite" in res.content
     assert "PayloadStore" in res.content
+
+
+def test_self_improve_tool(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    tools = SafeTools()
+    project = Project("dev_project", "Dev", "Goal", "Rules", tmp_path, allow_write=True, is_creator_console=True)
+    res = tools.execute(project, "self_improve", {"focus": "context"}, confirmed=True)
+    assert res.ok is True
+    assert "Autonomous Self-Improvement Cycle" in res.content
+    assert "Self-Tuning" in res.content
+    assert "ADILang IR Plan" in res.content
