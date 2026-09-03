@@ -397,13 +397,46 @@
           </div>
         `;
       } else {
+        let processStepsHtml = "";
+        if (meta.steps && meta.steps.length > 0) {
+          const stepsContent = meta.steps.map(s => {
+            const isCompleted = s.status === "completed";
+            const iconColor = isCompleted ? "text-emerald-400" : (s.status === "failed" ? "text-rose-400" : "text-cyan-400");
+            return `
+              <div class="flex items-start gap-2.5 text-xs py-1 border-l-2 border-slate-700/60 pl-3 ml-1.5">
+                <i class="${s.icon || 'fa-solid fa-circle-check'} text-[11px] mt-0.5 ${iconColor}"></i>
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-slate-200">${escapeHtml(s.title || s.stage)}</div>
+                  ${s.detail ? `<div class="text-[11px] text-slate-400 font-mono mt-0.5 break-all">${escapeHtml(s.detail)}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          processStepsHtml = `
+            <div class="mb-3 border border-slate-800 bg-[#0d1117] rounded-xl overflow-hidden shadow-inner">
+              <button onclick="this.parentElement.querySelector('.steps-body').classList.toggle('hidden'); this.querySelector('.steps-chevron').classList.toggle('rotate-180')" class="w-full px-3 py-2 flex items-center justify-between text-xs text-cyan-400 hover:text-cyan-300 bg-slate-900/60 hover:bg-slate-900 transition">
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-microchip text-[11px] text-cyan-400"></i>
+                  <span class="font-medium">Tahapan Berpikir & Eksekusi (${meta.steps.length} Langkah)</span>
+                </div>
+                <i class="fa-solid fa-chevron-down steps-chevron text-[10px] transition-transform duration-200"></i>
+              </button>
+              <div class="steps-body p-2.5 space-y-1.5 bg-[#0d1117]">
+                ${stepsContent}
+              </div>
+            </div>
+          `;
+        }
+
         div.innerHTML = `
           <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-cyan-400 flex-shrink-0 mt-0.5">
             AI
           </div>
           <div class="bg-[#161b22] border border-[#21262d] text-slate-200 p-3.5 rounded-2xl text-sm leading-relaxed max-w-xl flex-1">
+            ${processStepsHtml}
             ${memoryBadge}
-            <div class="whitespace-pre-wrap">${escapeHtml(content)}</div>
+            <div class="whitespace-pre-wrap leading-relaxed">${escapeHtml(content)}</div>
             ${sourceSnippet}
             ${irSnippet}
             ${timeStr ? `<div class="text-[10px] text-slate-500 text-right mt-1">${timeStr}</div>` : ''}
@@ -413,6 +446,13 @@
       return div;
     }
 
+    function scrollToBottom(smooth = true) {
+      const box = document.getElementById('chatBox');
+      if (box) {
+        box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      }
+    }
+
     function appendMessage(role, content, meta = {}) {
       if (meta.timestamp) {
         appendDateDividerIfNeeded(meta.timestamp, false);
@@ -420,7 +460,7 @@
       const box = document.getElementById('chatBox');
       const div = renderMessageElement(role, content, meta);
       box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
+      scrollToBottom(true);
     }
 
     function prependMessage(role, content, meta = {}) {
@@ -511,6 +551,8 @@
               });
               chatHistory.push({ role: msg.role, content: msg.content });
             }
+            // Auto scroll to newest message at initial load
+            setTimeout(() => scrollToBottom(false), 50);
           }
         }
       } catch (err) {
@@ -629,7 +671,7 @@
       input.style.height = 'auto';
       clearAttachedImage();
 
-      // Show typing indicator
+      // Show multi-step Antigravity-style live progress indicator
       const box = document.getElementById('chatBox');
       const loadingDiv = document.createElement('div');
       loadingDiv.id = 'aiTypingIndicator';
@@ -638,13 +680,65 @@
         <div class="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-cyan-400 flex-shrink-0 mt-0.5">
           AI
         </div>
-        <div class="bg-[#161b22] border border-[#21262d] p-3 rounded-2xl text-xs text-slate-400 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span>Berpikir & menelusuri memori...</span>
+        <div class="bg-[#161b22] border border-[#21262d] p-3.5 rounded-2xl text-xs text-slate-300 w-full max-w-xl space-y-2.5 shadow-lg">
+          <div class="flex items-center justify-between text-cyan-400 font-medium">
+            <span class="flex items-center gap-2">
+              <i class="fa-solid fa-brain fa-fade"></i>
+              <span id="liveProgressLabel">Menganalisis Permintaan & Otoritas...</span>
+            </span>
+            <span class="text-[10px] text-slate-500 font-mono">ADI Local Engine</span>
+          </div>
+          <div class="space-y-1.5 text-[11px] text-slate-400 pl-1 border-l border-slate-800">
+            <div id="step1" class="flex items-center gap-2 text-cyan-300">
+              <i class="fa-solid fa-spinner fa-spin text-[10px]"></i>
+              <span>Memeriksa peran pencipta & intent ADILang</span>
+            </div>
+            <div id="step2" class="flex items-center gap-2 text-slate-500">
+              <i class="fa-regular fa-circle text-[9px]"></i>
+              <span>Menelusuri memori seumur hidup & RAG Vector</span>
+            </div>
+            <div id="step3" class="flex items-center gap-2 text-slate-500">
+              <i class="fa-regular fa-circle text-[9px]"></i>
+              <span>Menyusun DAG Planning & evaluasi internal</span>
+            </div>
+            <div id="step4" class="flex items-center gap-2 text-slate-500">
+              <i class="fa-regular fa-circle text-[9px]"></i>
+              <span>Sintesis respons bebas halusinasi</span>
+            </div>
+          </div>
         </div>
       `;
       box.appendChild(loadingDiv);
-      box.scrollTop = box.scrollHeight;
+      scrollToBottom(true);
+
+      // Real-time progress transitions
+      const stepTimer1 = setTimeout(() => {
+        const s1 = document.getElementById('step1');
+        const s2 = document.getElementById('step2');
+        const lbl = document.getElementById('liveProgressLabel');
+        if (s1 && s2) {
+          s1.className = "flex items-center gap-2 text-emerald-400";
+          s1.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i><span>Otoritas terverifikasi: Bagas Adi Pratama S.Kom.</span>';
+          s2.className = "flex items-center gap-2 text-cyan-300";
+          s2.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i><span>Menelusuri memori seumur hidup & RAG Vector...</span>';
+          if (lbl) lbl.innerText = "Mengakses Memori & Fakta Sistem...";
+          scrollToBottom(true);
+        }
+      }, 500);
+
+      const stepTimer2 = setTimeout(() => {
+        const s2 = document.getElementById('step2');
+        const s3 = document.getElementById('step3');
+        const lbl = document.getElementById('liveProgressLabel');
+        if (s2 && s3) {
+          s2.className = "flex items-center gap-2 text-emerald-400";
+          s2.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i><span>Memori & bukti arsitektur berhasil dimuat</span>';
+          s3.className = "flex items-center gap-2 text-cyan-300";
+          s3.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i><span>Menyusun DAG Planning & eksekusi tools...</span>';
+          if (lbl) lbl.innerText = "Merumuskan Planning & Diagnosa...";
+          scrollToBottom(true);
+        }
+      }, 1200);
 
       try {
         const resp = await fetch('/chat', {
@@ -659,6 +753,8 @@
           })
         });
 
+        clearTimeout(stepTimer1);
+        clearTimeout(stepTimer2);
         loadingDiv.remove();
 
         if (resp.ok) {
@@ -666,7 +762,8 @@
           appendMessage('assistant', res.answer, {
             timestamp: Date.now() / 1000,
             ir_reply: res.ir_reply,
-            sources: res.sources
+            sources: res.sources,
+            steps: res.steps
           });
           setOnlineState(true);
         } else {

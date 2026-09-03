@@ -235,6 +235,7 @@ def chat(request: ChatRequest) -> dict:
             ],
             "pending_tool": reply.pending_tool,
             "ir_reply": reply.ir_reply,
+            "steps": reply.steps,
         }
     except (KeyError, ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

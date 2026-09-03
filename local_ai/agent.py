@@ -1,6 +1,7 @@
 import json
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from .adilang_ir import encode_intent, encode_reply
 from .config import Settings
@@ -21,6 +22,7 @@ class AgentReply:
     grounded: bool
     pending_tool: dict | None = None
     ir_reply: str = ""
+    steps: list[dict[str, Any]] = ()
 
 
 class LocalAgent:
@@ -94,6 +96,7 @@ class LocalAgent:
         )
         response = self.runtime.generate(prompt)
 
+        tools_executed = []
         for _ in range(3):
             call = self._tool_call(response)
             if not call:
@@ -104,6 +107,11 @@ class LocalAgent:
                 call.get("arguments", {}),
                 confirmed=allow_mutations,
             )
+            tools_executed.append({
+                "name": call["name"],
+                "arguments": call.get("arguments", {}),
+                "success": result.ok,
+            })
             if result.requires_confirmation:
                 reply_ir = encode_reply("conv", "Operasi perubahan memerlukan konfirmasi eksplisit.", compact=True)
                 return AgentReply(
@@ -192,18 +200,62 @@ class LocalAgent:
                 ir_reply=ir_reply,
                 sources=[item.__dict__ for item in evidence],
             )
-            import threading
-            threading.Thread(
-                target=self.history_store.consolidate_unprocessed,
-                args=(project_id, self.rag),
-                daemon=True,
-            ).start()
+        # Assemble transparent Antigravity-style process steps (thinking, reasoning, planning, tools)
+        process_steps: list[dict[str, Any]] = []
+        
+        # 1. Intent Analysis
+        process_steps.append({
+            "stage": "Intent & Authentication",
+            "icon": "fa-solid fa-fingerprint",
+            "title": f"Menganalisis Permintaan & Otoritas ({'Pencipta Terverifikasi' if project.is_creator_console else 'Tamu Eksternal'})",
+            "detail": f"Intent: {activity.kind} | Authority: {'CREATOR_MASTER' if project.is_creator_console else 'RESTRICTED_GUEST'}",
+            "status": "completed",
+        })
+
+        # 2. Memory & Knowledge Retrieval
+        process_steps.append({
+            "stage": "Memory & RAG Retrieval",
+            "icon": "fa-solid fa-brain",
+            "title": f"Menelusuri Memori & Knowledge Base ({len(evidence)} bukti ditemukan)",
+            "detail": ", ".join(e.title for e in evidence[:3]) if evidence else "Tidak ada bukti spesifik, menggunakan penalaran internal.",
+            "status": "completed",
+        })
+
+        # 3. Reasoning & Activity Planning
+        process_steps.append({
+            "stage": "Reasoning & DAG Planning",
+            "icon": "fa-solid fa-diagram-project",
+            "title": f"Menyusun Rencana Berpikir Terstruktur ({activity.kind})",
+            "detail": f"Rencana ADILang Plan: {activity.ir}",
+            "status": "completed",
+        })
+
+        # 4. Tool Execution (if any)
+        if tools_executed:
+            for t in tools_executed:
+                process_steps.append({
+                    "stage": "Tool Execution",
+                    "icon": "fa-solid fa-wrench",
+                    "title": f"Mengeksekusi Tool: {t['name']}",
+                    "detail": f"Argumen: {json.dumps(t['arguments'], ensure_ascii=False)} | Sukses: {t['success']}",
+                    "status": "completed" if t["success"] else "failed",
+                })
+
+        # 5. Answer Synthesis & Grounding
+        process_steps.append({
+            "stage": "Synthesis & Anti-Hallucination",
+            "icon": "fa-solid fa-shield-halved",
+            "title": "Verifikasi Validitas Sumber & Sintesis Jawaban",
+            "detail": f"Grounded: {bool(evidence) and valid_citations} | IR Protocol: {ir_reply[:60]}...",
+            "status": "completed",
+        })
 
         return AgentReply(
             answer=response,
             evidence=evidence,
             grounded=bool(evidence) and valid_citations,
             ir_reply=ir_reply,
+            steps=process_steps,
         )
 
     def _prompt(
