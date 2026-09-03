@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from .agent import LocalAgent
 from .config import get_settings
+from .history import ChatHistoryStore
 from .hub import LocalHub
 from .model import OpenELMRuntime
 from .projects import ProjectRegistry
@@ -17,12 +18,13 @@ from .vision import VisionRuntime
 
 settings = get_settings()
 hub = LocalHub(settings.state_dir)
+history_store = ChatHistoryStore(settings.state_dir)
 vision = VisionRuntime(base_url=settings.vision_base_url, model=settings.vision_model)
 registry = ProjectRegistry(settings)
 rag = RAGStore(settings)
 runtime = OpenELMRuntime(settings)
 tools = SafeTools(settings=settings, vision=vision, hub=hub)
-agent = LocalAgent(settings, registry, rag, runtime, tools, hub=hub)
+agent = LocalAgent(settings, registry, rag, runtime, tools, hub=hub, history_store=history_store)
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -236,3 +238,22 @@ def chat(request: ChatRequest) -> dict:
         }
     except (KeyError, ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/chat/history")
+def get_chat_history(project_id: str = "developer_master", limit: int = 100) -> list[dict]:
+    try:
+        registry.get(project_id)
+        return history_store.list(project_id, limit=limit)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/chat/history")
+def delete_chat_history(project_id: str = "developer_master") -> dict:
+    try:
+        registry.get(project_id)
+        cleared = history_store.clear(project_id)
+        return {"cleared": cleared}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

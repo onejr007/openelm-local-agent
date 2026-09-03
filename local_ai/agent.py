@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from .adilang_ir import encode_intent, encode_reply
 from .config import Settings
+from .history import ChatHistoryStore
 from .hub import LocalHub
 from .model import OpenELMRuntime
 from .projects import ProjectRegistry
@@ -31,6 +32,7 @@ class LocalAgent:
         runtime: OpenELMRuntime,
         tools: SafeTools,
         hub: LocalHub | None = None,
+        history_store: ChatHistoryStore | None = None,
     ):
         self.settings = settings
         self.registry = registry
@@ -38,6 +40,7 @@ class LocalAgent:
         self.runtime = runtime
         self.tools = tools
         self.hub = hub
+        self.history_store = history_store
 
     def chat(
         self,
@@ -55,8 +58,22 @@ class LocalAgent:
         if self.hub:
             self.hub.record("user_intent", project_id, ir_override=intent_ir)
 
+        # 2. Record user message in persistent chat history & retrieve smart context
+        state_summary = ""
+        if self.history_store:
+            self.history_store.add(project_id, "user", message)
+            if not history:
+                history, state_summary = self.history_store.get_prompt_context(project_id, recent_k=4)
+
         evidence = self.rag.search(message, project_id)
-        prompt = self._prompt(project.system_prompt, project.goal, message, history or [], evidence)
+        prompt = self._prompt(
+            project.system_prompt,
+            project.goal,
+            message,
+            history or [],
+            evidence,
+            state_summary=state_summary,
+        )
         response = self.runtime.generate(prompt)
 
         for _ in range(3):
@@ -114,6 +131,15 @@ class LocalAgent:
         if self.hub:
             self.hub.record("agent_reply", project_id, ir_override=ir_reply)
 
+        if self.history_store:
+            self.history_store.add(
+                project_id,
+                "assistant",
+                response,
+                ir_reply=ir_reply,
+                sources=[item.__dict__ for item in evidence],
+            )
+
         return AgentReply(
             answer=response,
             evidence=evidence,
@@ -128,6 +154,7 @@ class LocalAgent:
         message: str,
         history: list[dict[str, str]],
         evidence: list[Evidence],
+        state_summary: str = "",
     ) -> str:
         context_parts = []
         context_chars = 0
@@ -155,6 +182,7 @@ Label suggestions as suggestions. For actions, give a short plan and verify the 
         )
         tool_text = TOOL_INSTRUCTIONS if any(word in message.lower() for word in action_words) else ""
         history_section = f"\nConversation:\n{history_text}\n" if history_text else ""
+        state_section = f"\nPrior context (compact ADILang state): {state_summary}\n" if state_summary else ""
         return f"""Instruction: Answer the user's question in Indonesian. Be concise, precise, and proactive.
 Project goal: {goal}
 Project rules: {system_prompt}
@@ -163,7 +191,7 @@ Evidence policy: {grounding}
 
 Context:
 {context}
-{history_section}
+{state_section}{history_section}
 Question: {message}
 Answer in Indonesian:"""
 

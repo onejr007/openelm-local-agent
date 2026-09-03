@@ -126,9 +126,34 @@ def test_system_diagnostics_and_tuning(tmp_path: Path):
     assert "Bagas Adi Pratama" in diag.content
     assert "weaknesses_and_bottlenecks" in diag.content
 
-    # Tuning test
     tune_res = tools.execute(project, "self_tune", {"parameter": "rag_top_k", "value": 6}, confirmed=True)
     assert tune_res.ok is True
     assert "diubah dari" in tune_res.content
     assert tools.settings.rag_top_k == 6
+
+
+def test_chat_history_and_smart_context(tmp_path: Path):
+    from local_ai.history import ChatHistoryStore
+
+    store = ChatHistoryStore(tmp_path)
+    # Add messages
+    for i in range(10):
+        store.add("dev_project", "user", f"Pesan developer {i}")
+        store.add("dev_project", "assistant", f"Jawaban AI {i}", ir_reply=f'reply "answer" {{ mode "conv" content "{i}" }}')
+
+    history = store.list("dev_project", limit=100)
+    assert len(history) == 20
+    assert history[0]["content"] == "Pesan developer 0"
+    assert history[-1]["content"] == "Jawaban AI 9"
+
+    # Smart context test: returns last 4 turns + compact ADILang IR state summary of older 16 turns
+    recent, state_ir = store.get_prompt_context("dev_project", recent_k=4)
+    assert len(recent) == 4
+    assert "state" in state_ir
+    assert "progress" in state_ir
+
+    # Clear test
+    cleared = store.clear("dev_project")
+    assert cleared == 20
+    assert len(store.list("dev_project")) == 0
 

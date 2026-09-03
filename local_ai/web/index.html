@@ -156,7 +156,34 @@
       document.getElementById('imagePreviewBox').classList.add('hidden');
     }
 
-    function clearChat() {
+    async function loadChatHistory() {
+      try {
+        const resp = await fetch('/chat/history?project_id=developer_master&limit=100');
+        if (resp.ok) {
+          const messages = await resp.json();
+          if (messages && messages.length > 0) {
+            const box = document.getElementById('chatBox');
+            box.innerHTML = '';
+            chatHistory = [];
+            for (const msg of messages) {
+              appendMessage(msg.role, msg.content, {
+                ir_reply: msg.ir_reply,
+                sources: msg.sources
+              });
+              chatHistory.push({ role: msg.role, content: msg.content });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed loading chat history:', err);
+      }
+    }
+
+    async function clearChat() {
+      if (!confirm('Hapus seluruh riwayat percakapan developer?')) return;
+      try {
+        await fetch('/chat/history?project_id=developer_master', { method: 'DELETE' });
+      } catch (_) {}
       chatHistory = [];
       const box = document.getElementById('chatBox');
       box.innerHTML = `
@@ -165,7 +192,7 @@
             AI
           </div>
           <div class="text-sm text-slate-200 leading-relaxed bg-[#161b22] border border-[#21262d] p-3.5 rounded-2xl">
-            <p>Percakapan dibersihkan. Ada yang bisa saya bantu sekarang, Mas Bagas?</p>
+            <p>Riwayat percakapan telah dibersihkan. Ada yang bisa saya bantu sekarang, Mas Bagas?</p>
           </div>
         </div>
       `;
@@ -362,9 +389,11 @@
       }
     }
 
-    // Start background health polling every 3 seconds
-    setInterval(checkHealth, 3000);
-    window.addEventListener('DOMContentLoaded', checkHealth);
+    window.addEventListener('DOMContentLoaded', () => {
+      checkHealth();
+      loadChatHistory();
+      setInterval(checkHealth, 3000);
+    });
   </script>
 </body>
 </html>
