@@ -8,6 +8,8 @@ data/chroma/
 data/chroma-init-race-backup/
 data/models/
 data/state/
+data/logs/
+*.log
 __pycache__/
 *.pyc
 *.sqlite3
