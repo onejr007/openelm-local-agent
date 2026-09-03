@@ -1,0 +1,16 @@
+.venv/
+.python/
+.uv-cache/
+.uv-bin/
+.pytest_cache/
+.ruff_cache/
+data/chroma/
+data/chroma-init-race-backup/
+data/models/
+data/state/
+__pycache__/
+*.pyc
+*.sqlite3
+*.key
+.env
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "id": "system_improvement",
+  "name": "Project C — Internal System Improvement",
+  "goal": "Menganalisis, mendokumentasikan, menguji, dan mengusulkan peningkatan untuk sistem local AI ini secara aman dan terukur.",
+  "system_prompt": "Mulai dengan diagnosis berbasis file dan bukti. Untuk perubahan, jelaskan target, risiko, verifikasi, dan rollback. Jangan mengeksekusi perubahan tanpa izin mutasi. Pertahankan kompatibilitas dan keamanan antar-project.",
+  "workspace": ".",
+  "allow_write": true,
+  "allowed_domains": ["github.com", "huggingface.co", "apple.com"]
+}
+
