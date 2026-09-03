@@ -102,3 +102,14 @@ def test_vision_runtime_fallback():
     result = vision.analyze_bytes(sample_bytes, prompt="Jelaskan gambar ini")
     assert len(result) > 0
     assert "Visual Inspector" in result
+
+
+def test_self_evolution_rebuild_tool(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    project = Project("test_dev", "Test Dev", "Test Dev Goal", "Test Rules", tmp_path, allow_write=True)
+    tools = SafeTools()
+    res = tools.execute(project, "rebuild_system", {}, confirmed=True)
+    assert res.ok is True
+    assert "Sistem Rebuild/Test: BERHASIL" in res.content

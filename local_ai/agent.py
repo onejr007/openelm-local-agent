@@ -80,22 +80,15 @@ class LocalAgent:
                 )
             tool_prompt = (
                 prompt
-                + f"
-
-Assistant requested tool: {json.dumps(call, ensure_ascii=False)}"
-                + f"
-Tool result (success={result.ok}):
-{result.content}"
-                + "
-
-Assistant: Answer the user using the tool result."
+                + f"\n\nAssistant requested tool: {json.dumps(call, ensure_ascii=False)}"
+                + f"\nTool result (success={result.ok}):\n{result.content}"
+                + "\n\nAssistant: Answer the user using the tool result."
             )
             response = self.runtime.generate(tool_prompt)
 
         if remember:
             self.rag.remember(
-                f"User: {message}
-Assistant: {response}", project_id, source="chat"
+                f"User: {message}\nAssistant: {response}", project_id, source="chat"
             )
             if self.hub:
                 self.hub.record("memory_saved", project_id)
@@ -113,11 +106,7 @@ Assistant: {response}", project_id, source="chat"
                 excerpts.append(f"[{index}] {item.text[:1200]}")
             response = (
                 "Output generatif tidak lolos verifikasi sumber. Berikut bukti paling relevan "
-                "yang ditemukan tanpa menambahkan klaim baru:
-
-" + "
-
-".join(excerpts)
+                "yang ditemukan tanpa menambahkan klaim baru:\n\n" + "\n\n".join(excerpts)
             )
             valid_citations = True
 
@@ -147,16 +136,12 @@ Assistant: {response}", project_id, source="chat"
             if context_chars + len(excerpt) > 3200:
                 break
             context_parts.append(
-                f"[{index}] title={item.title}; source={item.source}; relevance={item.relevance:.2f}
-{excerpt}"
+                f"[{index}] title={item.title}; source={item.source}; relevance={item.relevance:.2f}\n{excerpt}"
             )
             context_chars += len(excerpt)
-        context = "
-
-".join(context_parts) or "NO_RELEVANT_EVIDENCE"
+        context = "\n\n".join(context_parts) or "NO_RELEVANT_EVIDENCE"
         recent = history[-4:]
-        history_text = "
-".join(
+        history_text = "\n".join(
             f"{item.get('role', 'user').title()}: {item.get('content', '')[:500]}" for item in recent
         )
         grounding = """Use only the retrieved evidence for factual project claims. Cite it as
@@ -165,10 +150,7 @@ does not answer the question, say that the evidence is insufficient instead of g
 Label suggestions as suggestions. For actions, give a short plan and verify the result."""
         action_words = ("baca ", "lihat file", "tulis ", "edit ", "ubah ", "cari file", "http", "gambar", "image", "sync", "rebuild", "github")
         tool_text = TOOL_INSTRUCTIONS if any(word in message.lower() for word in action_words) else ""
-        history_section = f"
-Conversation:
-{history_text}
-" if history_text else ""
+        history_section = f"\nConversation:\n{history_text}\n" if history_text else ""
         return f"""Instruction: Answer the user's question in Indonesian. Be concise, precise, and proactive.
 Project goal: {goal}
 Project rules: {system_prompt}

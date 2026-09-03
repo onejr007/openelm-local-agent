@@ -144,10 +144,10 @@ class SafeTools:
             raise FileNotFoundError(f"Image file not found: {path}")
         return self.vision.analyze_path(file_path, prompt=prompt)
 
-    def _rebuild_system(self, project: Project) -> str:
+    def _rebuild_system(self, project: Project, target: str = "tests/test_core.py") -> str:
         """Run tests and check integrity of self system."""
         venv_pytest = self.settings.root_dir / ".venv" / "bin" / "pytest"
-        cmd = [str(venv_pytest), "-v"] if venv_pytest.exists() else ["pytest", "-v"]
+        cmd = [str(venv_pytest), "-v", target] if venv_pytest.exists() else ["pytest", "-v", target]
         try:
             res = subprocess.run(
                 cmd,
