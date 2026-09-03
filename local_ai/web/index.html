@@ -349,6 +349,56 @@
       }
     }
 
+    function formatMarkdown(text) {
+      if (!text) return '';
+      let html = escapeHtml(text);
+
+      // Code blocks ```lang\ncode\n```
+      html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, codeContent) => {
+        const langLabel = lang || 'code';
+        return `
+          <div class="code-block my-2.5 rounded-xl bg-[#0a0d12] border border-slate-800 overflow-hidden shadow-sm">
+            <div class="flex justify-between items-center px-3 py-1.5 bg-slate-900/90 border-b border-slate-800/80 text-[11px] text-slate-400 font-mono">
+              <span class="flex items-center gap-1.5 text-cyan-400"><i class="fa-solid fa-code text-[10px]"></i> ${escapeHtml(langLabel)}</span>
+              <button onclick="copyCodeBlock(this)" class="hover:text-cyan-300 transition flex items-center gap-1">
+                <i class="fa-regular fa-copy"></i>
+                <span>Salin</span>
+              </button>
+            </div>
+            <pre class="p-3 text-xs text-cyan-200 font-mono overflow-x-auto whitespace-pre leading-relaxed"><code>${codeContent}</code></pre>
+          </div>
+        `;
+      });
+
+      // Inline code `code`
+      html = html.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 bg-[#0d1117] border border-slate-800 text-cyan-300 rounded text-xs font-mono">$1</code>');
+
+      // Headings
+      html = html.replace(/^### (.*$)/gim, '<h3 class="font-bold text-slate-100 text-sm mt-3 mb-1">$1</h3>');
+      html = html.replace(/^## (.*$)/gim, '<h2 class="font-bold text-slate-100 text-base mt-3.5 mb-1.5">$1</h2>');
+      html = html.replace(/^# (.*$)/gim, '<h1 class="font-bold text-slate-100 text-lg mt-4 mb-2">$1</h1>');
+
+      // Bold & Italic
+      html = html.replace(/\*\*([^\*]+)\*\*/g, '<strong class="font-semibold text-slate-100">$1</strong>');
+      html = html.replace(/\*([^\*]+)\*/g, '<em class="italic text-slate-300">$1</em>');
+
+      // Line breaks
+      html = html.replace(/\n/g, '<br>');
+
+      return html;
+    }
+
+    function copyCodeBlock(btn) {
+      const pre = btn.closest('.code-block').querySelector('pre code');
+      if (pre) {
+        navigator.clipboard.writeText(pre.innerText).then(() => {
+          const original = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> <span class="text-emerald-400">Tersalin!</span>';
+          setTimeout(() => { btn.innerHTML = original; }, 2000);
+        });
+      }
+    }
+
     function renderMessageElement(role, content, meta = {}) {
       const isUser = role === 'user';
       const div = document.createElement('div');
@@ -436,7 +486,7 @@
           <div class="bg-[#161b22] border border-[#21262d] text-slate-200 p-3.5 rounded-2xl text-sm leading-relaxed max-w-xl flex-1">
             ${processStepsHtml}
             ${memoryBadge}
-            <div class="whitespace-pre-wrap leading-relaxed">${escapeHtml(content)}</div>
+            <div class="prose-content leading-relaxed text-slate-200">${formatMarkdown(content)}</div>
             ${sourceSnippet}
             ${irSnippet}
             ${timeStr ? `<div class="text-[10px] text-slate-500 text-right mt-1">${timeStr}</div>` : ''}
@@ -741,7 +791,7 @@
       }, 1200);
 
       try {
-        const resp = await fetch('/chat', {
+        const resp = await fetch('/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -755,25 +805,109 @@
 
         clearTimeout(stepTimer1);
         clearTimeout(stepTimer2);
-        loadingDiv.remove();
 
-        if (resp.ok) {
-          const res = await resp.json();
-          appendMessage('assistant', res.answer, {
-            timestamp: Date.now() / 1000,
-            ir_reply: res.ir_reply,
-            sources: res.sources,
-            steps: res.steps
-          });
-          setOnlineState(true);
-        } else {
-          const err = await resp.json();
-          appendMessage('assistant', `Terjadi kendala: ${err.detail || 'Gagal memproses pesan'}`);
+        if (!resp.ok) {
+          loadingDiv.remove();
+          const err = await resp.json().catch(() => ({ detail: 'Gagal memproses streaming' }));
+          appendMessage('assistant', `Terjadi kendala: ${err.detail || 'Gagal'}`);
+          return;
         }
-      } catch (err) {
+
+        // Initialize streaming message bubble
         loadingDiv.remove();
-        appendMessage('assistant', 'Tidak dapat terhubung ke AI lokal. Pastikan server aktif.');
-        setOnlineState(false);
+        let streamedAnswer = "";
+        let streamedSteps = [];
+        let finalSources = [];
+        let finalIr = "";
+
+        const assistantDiv = renderMessageElement('assistant', '', { steps: [] });
+        const contentEl = assistantDiv.querySelector('.prose-content');
+        document.getElementById('chatBox').appendChild(assistantDiv);
+        scrollToBottom(true);
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop(); // keep remainder
+
+          for (const part of parts) {
+            const lines = part.split('\n');
+            let eventName = '';
+            let dataStr = '';
+
+            for (const line of lines) {
+              if (line.startsWith('event: ')) eventName = line.substring(7).trim();
+              else if (line.startsWith('data: ')) dataStr = line.substring(6).trim();
+            }
+
+            if (!dataStr) continue;
+            try {
+              const dataObj = JSON.parse(dataStr);
+              if (eventName === 'step') {
+                streamedSteps.push(dataObj);
+              } else if (eventName === 'token') {
+                streamedAnswer += (dataObj.chunk || '');
+                if (contentEl) {
+                  contentEl.innerHTML = formatMarkdown(streamedAnswer);
+                  scrollToBottom(true);
+                }
+              } else if (eventName === 'done') {
+                finalSources = dataObj.sources || [];
+                finalIr = dataObj.ir_reply || '';
+              }
+            } catch (_) {}
+          }
+        }
+
+        // Finalize assistant message with full metadata
+        assistantDiv.remove();
+        appendMessage('assistant', streamedAnswer, {
+          timestamp: Date.now() / 1000,
+          ir_reply: finalIr,
+          sources: finalSources,
+          steps: streamedSteps
+        });
+        setOnlineState(true);
+
+      } catch (err) {
+        if (loadingDiv.parentNode) loadingDiv.remove();
+        console.error("Streaming error, falling back to standard /chat:", err);
+        // Graceful fallback to standard /chat
+        try {
+          const fallbackResp = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              project_id: 'developer_master',
+              message: fullText,
+              history: [],
+              remember: true,
+              allow_mutations: true
+            })
+          });
+          if (fallbackResp.ok) {
+            const res = await fallbackResp.json();
+            appendMessage('assistant', res.answer, {
+              timestamp: Date.now() / 1000,
+              ir_reply: res.ir_reply,
+              sources: res.sources,
+              steps: res.steps
+            });
+            setOnlineState(true);
+          } else {
+            appendMessage('assistant', 'Tidak dapat memproses pesan.');
+          }
+        } catch (_) {
+          appendMessage('assistant', 'Tidak dapat terhubung ke AI lokal. Pastikan server aktif.');
+          setOnlineState(false);
+        }
       }
     }
 

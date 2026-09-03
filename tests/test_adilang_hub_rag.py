@@ -302,3 +302,16 @@ def test_chat_stream_endpoint(tmp_path: Path):
     assert "event: step" in response.text
     assert "event: token" in response.text
     assert "event: done" in response.text
+
+
+def test_self_heal_tool(tmp_path: Path):
+    from local_ai.tools import SafeTools
+    from local_ai.projects import Project
+
+    tools = SafeTools()
+    project = Project("dev_project", "Dev", "Goal", "Rules", tmp_path, allow_write=True, is_creator_console=True)
+    res = tools.execute(project, "self_heal", {}, confirmed=True)
+    assert res.ok is True
+    assert "Self-Healing & System Integrity Report" in res.content
+    assert "SQLite" in res.content
+    assert "PayloadStore" in res.content
