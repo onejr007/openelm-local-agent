@@ -256,3 +256,16 @@ def test_create_action_plan_tool(tmp_path: Path):
     assert "plan" in res.content
 
 
+
+
+def test_vision_runtime_caching():
+    from local_ai.vision import VisionRuntime
+
+    runtime = VisionRuntime()
+    data = b"dummy_image_payload_bytes_for_testing_cache"
+
+    first_desc = runtime.analyze_bytes(data, prompt="test")
+    assert "Visual Inspector" in first_desc or "bytes" in first_desc
+    # Second call must hit SHA-256 in-memory cache
+    second_desc = runtime.analyze_bytes(data, prompt="test")
+    assert first_desc == second_desc

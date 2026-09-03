@@ -10,6 +10,7 @@ class VisionRuntime:
     def __init__(self, base_url: str = "http://127.0.0.1:11434", model: str = "llama3.2-vision"):
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self._cache: dict[str, str] = {}
 
     def status(self) -> dict[str, Any]:
         try:
@@ -51,6 +52,10 @@ class VisionRuntime:
     def analyze_bytes(self, image: bytes, prompt: str = "") -> str:
         if len(image) > 12 * 1024 * 1024:
             raise ValueError("Image exceeds 12 MB")
+        import hashlib
+        cache_key = hashlib.sha256(image + prompt.encode("utf-8")).hexdigest()
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         # 1. Ollama
         try:

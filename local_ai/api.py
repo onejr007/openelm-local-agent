@@ -287,3 +287,34 @@ def delete_chat_history(project_id: str = "developer_master") -> dict:
         return {"cleared": cleared}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+    from fastapi.responses import StreamingResponse
+    try:
+        reply = agent.chat(
+            request.project_id,
+            request.message,
+            [item.model_dump() for item in request.history],
+            remember=request.remember,
+            allow_mutations=request.allow_mutations,
+        )
+
+        def event_generator():
+            for step in reply.steps:
+                yield f"event: step\ndata: {json.dumps(step)}\n\n"
+            words = reply.answer.split(" ")
+            for i in range(0, len(words), 3):
+                chunk = " ".join(words[i:i+3]) + " "
+                yield f"event: token\ndata: {json.dumps({'chunk': chunk})}\n\n"
+            final_data = {
+                "answer": reply.answer,
+                "sources": [{**item.__dict__, "citation": item.citation(idx)} for idx, item in enumerate(reply.evidence, 1)],
+                "ir_reply": reply.ir_reply,
+            }
+            yield f"event: done\ndata: {json.dumps(final_data)}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

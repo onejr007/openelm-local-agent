@@ -26,6 +26,19 @@ class AgentReply:
 
 
 class LocalAgent:
+
+    def _clamp_context(self, history: list[dict[str, str]], max_total_chars: int = 1200) -> list[dict[str, str]]:
+        """Pastikan total karakter riwayat tidak membebani jendela 2.048 token."""
+        total = 0
+        clamped = []
+        for msg in reversed(history):
+            content = msg.get("content", "")
+            if total + len(content) > max_total_chars:
+                break
+            clamped.append(msg)
+            total += len(content)
+        return list(reversed(clamped))
+
     def __init__(
         self,
         settings: Settings,
@@ -89,7 +102,7 @@ class LocalAgent:
             project.system_prompt,
             project.goal,
             message_with_plan,
-            history or [],
+            self._clamp_context(history or []),
             evidence,
             state_summary=state_summary,
             is_creator=project.is_creator_console,
